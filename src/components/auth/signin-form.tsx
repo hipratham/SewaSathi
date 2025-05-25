@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { LogIn, Loader2, Phone, MailQuestion } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail } from "firebase/auth";
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail, type User } from "firebase/auth";
 import { ref, get, set } from "firebase/database";
 import { auth, database } from "@/lib/firebase";
 import type { UserRole } from "@/context/auth-context";
@@ -76,7 +76,7 @@ export default function SignInForm() {
     },
   });
 
-  const handleSuccessfulSignIn = async (user: any) => {
+  const handleSuccessfulSignIn = async (user: User) => {
     try {
       const idToken = await user.getIdToken(true);
       await fetch('/api/auth/sessionLogin', {
@@ -104,7 +104,9 @@ export default function SignInForm() {
        const userEmail = user.email;
        const userNodeRef = ref(database, `users/${user.uid}`);
        const userNodeSnapshot = await get(userNodeRef);
-       if (!userNodeSnapshot.exists() && userEmail) {
+       // This block is mainly for users who first sign in via Google
+       // without going through the app's sign-up flow with role selection.
+       if (!userNodeSnapshot.exists() && userEmail && user.providerData.some(p => p.providerId === GoogleAuthProvider.PROVIDER_ID)) {
          await set(ref(database, `users/${user.uid}`), {
             name: userName,
             email: userEmail,
@@ -116,12 +118,14 @@ export default function SignInForm() {
             description: "Your new SewaSathi account is ready (defaulted to Service Seeker).",
           });
        } else if (!snapshot.exists()) {
+         // This case applies if an email/password user or a Google user somehow
+         // exists in Auth but not in RTDB with a role.
          toast({
           variant: "destructive",
           title: "Sign In Problem",
           description: "Could not determine user role. Please complete your profile or sign up with a role.",
         });
-        return false; 
+        return false; // Prevent further redirection
        }
     }
     
@@ -135,6 +139,8 @@ export default function SignInForm() {
     } else if (role === "seeker") {
       router.push("/home-seeker");
     } else {
+      // This should ideally not be reached if role determination fails and returns false above.
+      // But as a fallback, redirect to home.
       router.push("/"); 
     }
     return true;
@@ -224,12 +230,16 @@ export default function SignInForm() {
       console.error("Password reset error:", error);
       let errorMessage = "Failed to send password reset email. Please try again.";
       if (error.code === 'auth/user-not-found') {
+         // To avoid disclosing whether an email is registered, show the same success-like message
          toast({
           title: "Password Reset Email Sent",
           description: "If an account exists for this email, a reset link has been sent. Please check your inbox (and spam folder).",
         });
          setShowPasswordResetForm(false);
          setResetEmail("");
+         // Early return to prevent duplicate toast
+         setIsPasswordResetLoading(false);
+         return; 
       } else if (error.code === 'auth/invalid-email') {
         errorMessage = "The email address is not valid.";
       }
@@ -374,3 +384,6 @@ export default function SignInForm() {
     </Form>
   );
 }
+
+
+    
