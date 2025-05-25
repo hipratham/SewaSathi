@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -20,12 +20,11 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { UserPlus, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile, type User } from "firebase/auth";
 import { ref, set, get } from "firebase/database";
 import { auth, database } from "@/lib/firebase";
 import { useState } from "react";
 
-// Helper function to create a Google icon (simple SVG) - duplicated for now, could be a shared component
 const GoogleIcon = () => (
   <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4">
     <path
@@ -75,9 +74,8 @@ export default function SignUpForm() {
     },
   });
 
-  async function handleSuccessfulSignUp(user: any, name: string, email: string, role: "seeker" | "provider") {
-    // Update Firebase Auth profile (optional, but good for display name)
-    if (user.displayName !== name) {
+  async function handleSuccessfulSignUp(user: User, name: string, email: string, role: "seeker" | "provider") {
+    if (user.displayName !== name && name) {
         try {
             await updateProfile(user, { displayName: name });
         } catch (profileError) {
@@ -85,40 +83,42 @@ export default function SignUpForm() {
         }
     }
 
-    // Save user role and name in Realtime Database
-    // Check if user data already exists to avoid overwriting role if they sign up with Google after email
     const userRoleRef = ref(database, `users/${user.uid}/role`);
     const roleSnapshot = await get(userRoleRef);
 
     if (roleSnapshot.exists()) {
-        // Role already exists, possibly from a previous sign-up. Don't overwrite.
-        // This could happen if a user tries to sign up with Google after already having an email account.
-        // Firebase automatically links these if the email matches.
-        console.log("User already has a role, not overwriting with Google sign-up data.");
-        const existingRole = roleSnapshot.val();
-         toast({
+        console.log("User already has a role, not overwriting.");
+        toast({
             title: "Account Linked!",
             description: "Your Google account has been linked to your existing SewaSathi profile.",
         });
-        if (existingRole === "provider") {
-            router.push("/home-provider");
-        } else {
-            router.push("/home-seeker");
-        }
-        return;
+    } else {
+        await set(ref(database, `users/${user.uid}`), {
+          name: name,
+          email: email,
+          role: role,
+        });
+         toast({
+          title: "Account Created!",
+          description: "Welcome to SewaSathi!",
+        });
     }
 
-
-    await set(ref(database, `users/${user.uid}`), {
-      name: name,
-      email: email,
-      role: role,
-    });
-
-    toast({
-      title: "Account Created!",
-      description: "Welcome to SewaSathi!",
-    });
+    try {
+      const idToken = await user.getIdToken(true);
+      await fetch('/api/auth/sessionLogin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+    } catch (sessionError) {
+      console.error("Session login error:", sessionError);
+      toast({
+        variant: "destructive",
+        title: "Session Error",
+        description: "Could not create a server session. You are logged in client-side only.",
+      });
+    }
 
     if (role === "provider") {
       router.push("/home-provider");
@@ -126,7 +126,6 @@ export default function SignUpForm() {
       router.push("/home-seeker");
     }
   }
-
 
   async function onSubmit(values: z.infer<typeof signUpSchema>) {
     setIsLoading(true);
@@ -167,7 +166,7 @@ export default function SignUpForm() {
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      const name = user.displayName || "Google User"; // Fallback if display name is not available
+      const name = user.displayName || form.getValues("name") || "Google User";
       const email = user.email;
 
       if (!email) {
@@ -280,6 +279,7 @@ export default function SignUpForm() {
                   </FormItem>
                 </RadioGroup>
               </FormControl>
+              <FormDescription>Select your role before signing up with Google.</FormDescription>
               <FormMessage />
             </FormItem>
           )}

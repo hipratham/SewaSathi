@@ -7,7 +7,7 @@ import { Menu, Sparkles, LayoutDashboard, LogOut, UserCircle } from "lucide-reac
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/context/auth-context";
 import { auth } from "@/lib/firebase";
-import { signOut } from "firebase/auth";
+import { signOut as firebaseSignOut } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 
@@ -15,7 +15,6 @@ const navLinks = [
   { href: "/", label: "Home" },
   { href: "/providers", label: "Find Providers" },
   { href: "/request-service", label: "Request Service" },
-  // { href: "/provider-setup", label: "For Providers" }, // Replaced by role-based home
 ];
 
 export default function Header() {
@@ -25,9 +24,10 @@ export default function Header() {
 
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
+      await firebaseSignOut(auth); // Client-side sign out
+      await fetch('/api/auth/sessionLogout', { method: 'POST' }); // Server-side session clear
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
-      router.push("/"); // Redirect to home page after sign out
+      router.push("/"); 
     } catch (error) {
       console.error("Sign out error:", error);
       toast({ variant: "destructive", title: "Sign Out Failed", description: "Could not sign out. Please try again." });
@@ -37,9 +37,7 @@ export default function Header() {
   const providerSpecificLinks = role === 'provider' ? [{ href: "/provider-setup", label: "My Provider Profile" }] : [];
   const dashboardLink = user ? [{ href: "/dashboard", label: "Dashboard" }] : [];
 
-
   const allNavLinks = [...navLinks, ...providerSpecificLinks];
-
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -67,7 +65,7 @@ export default function Header() {
         <div className="hidden md:flex items-center gap-2">
          {loading ? null : user ? (
             <>
-              <span className="text-sm text-muted-foreground hidden lg:inline">{user.email}</span>
+              <span className="text-sm text-muted-foreground hidden lg:inline">{user.email || user.displayName}</span>
               <Button variant="outline" onClick={handleSignOut}>
                 <LogOut className="mr-2 h-4 w-4" /> Sign Out
               </Button>
@@ -102,7 +100,7 @@ export default function Header() {
                 </SheetTitle>
                  {user && (
                     <SheetDescription className="flex items-center text-xs">
-                        <UserCircle className="w-4 h-4 mr-1.5 text-muted-foreground"/> {user.email}
+                        <UserCircle className="w-4 h-4 mr-1.5 text-muted-foreground"/> {user.email || user.displayName}
                     </SheetDescription>
                  )}
               </SheetHeader>

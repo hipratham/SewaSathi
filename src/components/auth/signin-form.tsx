@@ -77,6 +77,22 @@ export default function SignInForm() {
   });
 
   const handleSuccessfulSignIn = async (user: any) => {
+    try {
+      const idToken = await user.getIdToken(true);
+      await fetch('/api/auth/sessionLogin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+    } catch (sessionError) {
+      console.error("Session login error:", sessionError);
+      toast({
+        variant: "destructive",
+        title: "Session Error",
+        description: "Could not create a server session. You are logged in client-side only.",
+      });
+    }
+
     const userRoleRef = ref(database, `users/${user.uid}/role`);
     const snapshot = await get(userRoleRef);
 
@@ -176,7 +192,6 @@ export default function SignInForm() {
       });
       return;
     }
-    // Validate email format (simple check)
     try {
       resetPasswordSchema.parse({ resetEmail });
     } catch (err) {
@@ -196,7 +211,6 @@ export default function SignInForm() {
       return;
     }
 
-
     setIsPasswordResetLoading(true);
     try {
       await sendPasswordResetEmail(auth, resetEmail);
@@ -210,8 +224,6 @@ export default function SignInForm() {
       console.error("Password reset error:", error);
       let errorMessage = "Failed to send password reset email. Please try again.";
       if (error.code === 'auth/user-not-found') {
-        // We typically don't want to confirm if an email exists for security reasons
-        // So, we show a generic message even for user-not-found
          toast({
           title: "Password Reset Email Sent",
           description: "If an account exists for this email, a reset link has been sent. Please check your inbox (and spam folder).",
@@ -230,7 +242,6 @@ export default function SignInForm() {
       setIsPasswordResetLoading(false);
     }
   }
-
 
   return (
     <Form {...form}>
@@ -270,7 +281,6 @@ export default function SignInForm() {
                 className="px-0 font-normal"
                 onClick={() => {
                   setShowPasswordResetForm(true);
-                  // Optionally prefill resetEmail with form.getValues("email") if it's valid
                   const currentEmail = form.getValues("email");
                   if (z.string().email().safeParse(currentEmail).success) {
                     setResetEmail(currentEmail);
@@ -326,7 +336,6 @@ export default function SignInForm() {
             </p>
           </>
         ) : (
-          // Password Reset Form
           <div className="space-y-4">
             <div>
               <h3 className="text-lg font-medium text-foreground">Reset Password</h3>
@@ -342,7 +351,6 @@ export default function SignInForm() {
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setResetEmail(e.target.value)} 
                   disabled={isPasswordResetLoading} 
                 />
-                {/* Minimal validation feedback for reset email, schema used in handler */}
             </FormItem>
             <Button type="button" onClick={handlePasswordReset} className="w-full" disabled={isPasswordResetLoading}>
               {isPasswordResetLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MailQuestion className="mr-2 h-4 w-4"/>}
@@ -366,4 +374,3 @@ export default function SignInForm() {
     </Form>
   );
 }
-
