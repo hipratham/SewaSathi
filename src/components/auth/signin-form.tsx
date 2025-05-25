@@ -23,7 +23,6 @@ import { ref, get, set } from "firebase/database";
 import { auth, database } from "@/lib/firebase";
 import type { UserRole } from "@/lib/types"; // Import UserRole from types.ts
 import { useState, type ChangeEvent } from "react";
-import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Helper function to create a Google icon (simple SVG)
@@ -98,54 +97,71 @@ export default function SignInForm() {
     }
 
     const userRoleRef = ref(database, `users/${user.uid}/role`);
-    const snapshot = await get(userRoleRef);
+    const snapshot = await get(userRoleRef); // Fetches /users/{uid}/role
 
     let role: UserRole = null;
     if (snapshot.exists()) {
       role = snapshot.val() as UserRole;
     } else {
-       const userName = user.displayName || user.email?.split('@')[0] || "User";
+       // This block is entered if /users/{uid}/role doesn't exist
        const userEmail = user.email;
-       const userNodeRef = ref(database, `users/${user.uid}`);
-       const userNodeSnapshot = await get(userNodeRef);
+       const isGoogleSignIn = user.providerData.some(p => p.providerId === GoogleAuthProvider.PROVIDER_ID);
 
-       if (!userNodeSnapshot.exists() && userEmail && user.providerData.some(p => p.providerId === GoogleAuthProvider.PROVIDER_ID)) {
-         await set(ref(database, `users/${user.uid}`), {
-            name: userName,
-            email: userEmail,
-            role: "seeker", 
-         });
-         role = "seeker";
-          toast({
-            title: "Welcome!",
-            description: "Your new SewaSathi account is ready (defaulted to Service Seeker).",
-          });
-       } else if (!snapshot.exists()) {
+       if (isGoogleSignIn) {
+         // Check if the entire user node exists, to see if it's a truly new Google user vs. existing user missing role
+         const userNodeRef = ref(database, `users/${user.uid}`);
+         const userNodeSnapshot = await get(userNodeRef);
+         if (!userNodeSnapshot.exists() && userEmail) {
+           const userName = user.displayName || user.email?.split('@')[0] || "User";
+           await set(ref(database, `users/${user.uid}`), {
+              name: userName,
+              email: userEmail,
+              role: "seeker", 
+           });
+           role = "seeker";
+           toast({
+              title: "Welcome!",
+              description: "Your new SewaSathi account is ready (defaulted to Service Seeker).",
+           });
+         } else {
+            // Google user exists but /role path is missing or something else is wrong with their user node
+             toast({
+              variant: "destructive",
+              title: "Sign In Problem",
+              description: "Your role could not be determined. Please contact support if this issue persists.",
+            });
+            return false;
+         }
+       } else {
+         // Non-Google sign-in (e.g., Email/Password) and /users/{uid}/role does not exist
          toast({
-          variant: "destructive",
-          title: "Sign In Problem",
-          description: "Could not determine user role. Please complete your profile or sign up with a role.",
-        });
-        return false; 
+            variant: "destructive",
+            title: "Sign In Problem (Role Missing)",
+            description: "Your user role is not configured in the database. Please ensure your account (especially admin/provider) is set up correctly by an administrator or try signing up.",
+          });
+          return false; 
        }
     }
     
-    toast({
-      title: "Signed In!",
-      description: "Welcome back to SewaSathi!",
-    });
+    if (role) { // Only proceed if role was successfully determined
+        toast({
+          title: "Signed In!",
+          description: `Welcome back to SewaSathi! Role: ${role}`,
+        });
 
-    if (role === "provider") {
-      router.push("/home-provider");
-    } else if (role === "seeker") {
-      router.push("/home-seeker");
-    } else if (role === "admin") {
-      router.push("/dashboard"); // Admin will see their content on the main dashboard
-    } else {
-      // Fallback if role is null or unhandled
-      router.push("/"); 
+        if (role === "provider") {
+          router.push("/home-provider");
+        } else if (role === "seeker") {
+          router.push("/home-seeker");
+        } else if (role === "admin") {
+          router.push("/dashboard");
+        } else {
+          router.push("/"); // Fallback
+        }
+        return true;
     }
-    return true;
+    // If role is still null after all checks (should have been caught by toasts above)
+    return false;
   };
 
   async function onSubmit(values: z.infer<typeof signInSchema>) {
@@ -384,3 +400,5 @@ export default function SignInForm() {
     </Form>
   );
 }
+
+    
