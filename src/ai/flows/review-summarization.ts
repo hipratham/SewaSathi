@@ -2,7 +2,7 @@
 'use server';
 /**
  * @fileOverview Summarizes service provider reviews.
- *
+ * 
  * - summarizeReviews - A function that summarizes reviews for a service provider.
  * - SummarizeReviewsInput - The input type for the summarizeReviews function.
  * - SummarizeReviewsOutput - The return type for the summarizeReviews function.
