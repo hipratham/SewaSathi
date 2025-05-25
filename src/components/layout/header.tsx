@@ -1,19 +1,45 @@
+
+"use client";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, Sparkles, LayoutDashboard } from "lucide-react";
+import { Menu, Sparkles, LayoutDashboard, LogOut, UserCircle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { useAuth } from "@/context/auth-context";
+import { auth } from "@/lib/firebase";
+import { signOut } from "firebase/auth";
+import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
 
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/providers", label: "Find Providers" },
   { href: "/request-service", label: "Request Service" },
-  { href: "/provider-setup", label: "For Providers" },
+  // { href: "/provider-setup", label: "For Providers" }, // Replaced by role-based home
 ];
 
 export default function Header() {
-  // Mock authentication state - in a real app, this would come from context or session
-  const isAuthenticated = false; // Change to true to see authenticated state
+  const { user, role, loading } = useAuth();
+  const { toast } = useToast();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      toast({ title: "Signed Out", description: "You have been successfully signed out." });
+      router.push("/"); // Redirect to home page after sign out
+    } catch (error) {
+      console.error("Sign out error:", error);
+      toast({ variant: "destructive", title: "Sign Out Failed", description: "Could not sign out. Please try again." });
+    }
+  };
+  
+  const providerSpecificLinks = role === 'provider' ? [{ href: "/provider-setup", label: "My Provider Profile" }] : [];
+  const dashboardLink = user ? [{ href: "/dashboard", label: "Dashboard" }] : [];
+
+
+  const allNavLinks = [...navLinks, ...providerSpecificLinks];
+
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -24,23 +50,28 @@ export default function Header() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
-          {navLinks.map((link) => (
+          {allNavLinks.map((link) => (
             <Button key={link.href} variant="ghost" asChild>
               <Link href={link.href}>{link.label}</Link>
             </Button>
           ))}
-           {isAuthenticated && (
-             <Button variant="ghost" asChild>
-                <Link href="/dashboard" className="flex items-center">
-                  <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
+           {user && dashboardLink.map(link => (
+             <Button key={link.href} variant="ghost" asChild>
+                <Link href={link.href} className="flex items-center">
+                  <LayoutDashboard className="mr-2 h-4 w-4" /> {link.label}
                 </Link>
               </Button>
-           )}
+           ))}
         </nav>
         
         <div className="hidden md:flex items-center gap-2">
-         {isAuthenticated ? (
-            <Button variant="outline">Sign Out</Button>
+         {loading ? null : user ? (
+            <>
+              <span className="text-sm text-muted-foreground hidden lg:inline">{user.email}</span>
+              <Button variant="outline" onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" /> Sign Out
+              </Button>
+            </>
           ) : (
             <>
               <Button variant="ghost" asChild>
@@ -69,27 +100,31 @@ export default function Header() {
                       <span className="text-xl font-bold text-foreground">SewaSathi</span>
                     </Link>
                 </SheetTitle>
-                <SheetDescription>
-                    Your local service partner.
-                </SheetDescription>
+                 {user && (
+                    <SheetDescription className="flex items-center text-xs">
+                        <UserCircle className="w-4 h-4 mr-1.5 text-muted-foreground"/> {user.email}
+                    </SheetDescription>
+                 )}
               </SheetHeader>
               <Separator className="mb-4"/>
               <div className="flex flex-col gap-2">
-                {navLinks.map((link) => (
+                {allNavLinks.map((link) => (
                   <Button key={link.href} variant="ghost" asChild className="justify-start text-base py-3 h-auto">
                     <Link href={link.href}>{link.label}</Link>
                   </Button>
                 ))}
-                {isAuthenticated && (
-                  <Button variant="ghost" asChild className="justify-start text-base py-3 h-auto">
-                    <Link href="/dashboard" className="flex items-center">
-                      <LayoutDashboard className="mr-2 h-5 w-5" /> Dashboard
+                {user && dashboardLink.map(link => (
+                  <Button key={link.href} variant="ghost" asChild className="justify-start text-base py-3 h-auto">
+                    <Link href={link.href} className="flex items-center">
+                      <LayoutDashboard className="mr-2 h-5 w-5" /> {link.label}
                     </Link>
                   </Button>
-                )}
+                ))}
                 <Separator className="my-2"/>
-                 {isAuthenticated ? (
-                  <Button variant="outline" className="w-full text-base py-3 h-auto">Sign Out</Button>
+                 {loading ? null : user ? (
+                  <Button variant="outline" className="w-full text-base py-3 h-auto" onClick={handleSignOut}>
+                     <LogOut className="mr-2 h-5 w-5" /> Sign Out
+                  </Button>
                 ) : (
                   <>
                     <Button variant="ghost" asChild className="justify-start text-base py-3 h-auto">

@@ -1,3 +1,4 @@
+
 "use client"; // Required for hooks like useState, useEffect
 
 import { useParams } from "next/navigation";
@@ -10,7 +11,7 @@ import ReviewSummary from "@/components/reviews/review-summary";
 import ReviewForm from "@/components/reviews/review-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } ઉfrom "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Star, MapPin, Phone, Mail, Clock, MessageSquarePlus, DollarSign } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useEffect, useState } from "react";
@@ -137,7 +138,7 @@ export default function ProviderProfilePage() {
 
       {reviews && <ReviewSummary reviews={reviews} providerName={provider.name} />}
       
-      <div className="grid md:grid-cols-3 gap-8">
+      <div className="grid md:grid-cols-3 gap-8" id="reviews"> {/* Added id for linking */}
         <section className="md:col-span-2 space-y-6">
           <h2 className="text-2xl font-semibold text-primary flex items-center">
             <Star className="w-6 h-6 mr-2 text-primary" /> Customer Reviews
