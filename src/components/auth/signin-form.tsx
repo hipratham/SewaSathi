@@ -21,7 +21,7 @@ import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail, type User } from "firebase/auth";
 import { ref, get, set } from "firebase/database";
 import { auth, database } from "@/lib/firebase";
-import type { UserRole } from "@/context/auth-context";
+import type { UserRole } from "@/lib/types"; // Import UserRole from types.ts
 import { useState, type ChangeEvent } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -79,17 +79,21 @@ export default function SignInForm() {
   const handleSuccessfulSignIn = async (user: User) => {
     try {
       const idToken = await user.getIdToken(true);
-      await fetch('/api/auth/sessionLogin', {
+      const sessionResponse = await fetch('/api/auth/sessionLogin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken }),
       });
-    } catch (sessionError) {
+      if (!sessionResponse.ok) {
+        const errorData = await sessionResponse.json();
+        throw new Error(errorData.error || 'Failed to create server session.');
+      }
+    } catch (sessionError: any) {
       console.error("Session login error:", sessionError);
       toast({
         variant: "destructive",
         title: "Session Error",
-        description: "Could not create a server session. You are logged in client-side only.",
+        description: sessionError.message || "Could not create a server session. You are logged in client-side only.",
       });
     }
 
@@ -100,12 +104,11 @@ export default function SignInForm() {
     if (snapshot.exists()) {
       role = snapshot.val() as UserRole;
     } else {
-       const userName = user.displayName || "User";
+       const userName = user.displayName || user.email?.split('@')[0] || "User";
        const userEmail = user.email;
        const userNodeRef = ref(database, `users/${user.uid}`);
        const userNodeSnapshot = await get(userNodeRef);
-       // This block is mainly for users who first sign in via Google
-       // without going through the app's sign-up flow with role selection.
+
        if (!userNodeSnapshot.exists() && userEmail && user.providerData.some(p => p.providerId === GoogleAuthProvider.PROVIDER_ID)) {
          await set(ref(database, `users/${user.uid}`), {
             name: userName,
@@ -118,14 +121,12 @@ export default function SignInForm() {
             description: "Your new SewaSathi account is ready (defaulted to Service Seeker).",
           });
        } else if (!snapshot.exists()) {
-         // This case applies if an email/password user or a Google user somehow
-         // exists in Auth but not in RTDB with a role.
          toast({
           variant: "destructive",
           title: "Sign In Problem",
           description: "Could not determine user role. Please complete your profile or sign up with a role.",
         });
-        return false; // Prevent further redirection
+        return false; 
        }
     }
     
@@ -138,9 +139,10 @@ export default function SignInForm() {
       router.push("/home-provider");
     } else if (role === "seeker") {
       router.push("/home-seeker");
+    } else if (role === "admin") {
+      router.push("/dashboard"); // Admin will see their content on the main dashboard
     } else {
-      // This should ideally not be reached if role determination fails and returns false above.
-      // But as a fallback, redirect to home.
+      // Fallback if role is null or unhandled
       router.push("/"); 
     }
     return true;
@@ -230,14 +232,12 @@ export default function SignInForm() {
       console.error("Password reset error:", error);
       let errorMessage = "Failed to send password reset email. Please try again.";
       if (error.code === 'auth/user-not-found') {
-         // To avoid disclosing whether an email is registered, show the same success-like message
          toast({
           title: "Password Reset Email Sent",
           description: "If an account exists for this email, a reset link has been sent. Please check your inbox (and spam folder).",
         });
          setShowPasswordResetForm(false);
          setResetEmail("");
-         // Early return to prevent duplicate toast
          setIsPasswordResetLoading(false);
          return; 
       } else if (error.code === 'auth/invalid-email') {
@@ -384,6 +384,3 @@ export default function SignInForm() {
     </Form>
   );
 }
-
-
-    

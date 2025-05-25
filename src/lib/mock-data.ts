@@ -1,5 +1,5 @@
 
-import type { ServiceProvider, Review, ServiceProviderAvailability, ServiceProviderRates } from "./types";
+import type { ServiceProvider, Review, ServiceProviderAvailability, ServiceProviderRates, ServiceRequest, ServiceCategory } from "./types";
 
 const generateReviews = (providerName: string): Review[] => [
   {
@@ -35,6 +35,7 @@ const calculateOverallRating = (reviews: Review[]): number => {
 };
 
 interface RawProviderData {
+  id: string; // Using id as the Firebase Auth UID for mock providers
   name: string;
   category: ServiceProvider['category'];
   servicesOfferedArray: string[];
@@ -47,12 +48,14 @@ interface RawProviderData {
   otherCategoryDescription?: string;
 }
 
+// Ensure one of these IDs can be used as a UID for a test provider account
 const mockProvidersRawData: RawProviderData[] = [
   {
+    id: "mock-provider-uid-1", // This ID will be used as providerId in some mock requests
     name: "Ramesh Plumbing Services",
     category: "plumber",
     servicesOfferedArray: ["Leak Repair", "Pipe Installation", "Drain Cleaning"],
-    contactInfo: { phone: "98XXXXXXXX", email: "ramesh.plumbing@example.com" },
+    contactInfo: { phone: "9800000001", email: "ramesh.plumbing@example.com" },
     address: "Kupondole, Lalitpur",
     location: { lat: 27.6868, lng: 85.3187 },
     ratesObject: { type: "per-hour", amount: 800, details: "Minimum 1 hour charge." },
@@ -60,10 +63,11 @@ const mockProvidersRawData: RawProviderData[] = [
     profileImage: "https://placehold.co/300x300.png?text=RP",
   },
   {
+    id: "mock-provider-uid-2", // Another mock provider ID
     name: "Sita's Electrical Works",
     category: "electrician",
     servicesOfferedArray: ["Wiring", "Fixture Installation", "Emergency Repairs"],
-    contactInfo: { phone: "97XXXXXXXX", email: "sita.electrical@example.com" },
+    contactInfo: { phone: "9800000002", email: "sita.electrical@example.com" },
     address: "Baneshwor, Kathmandu",
     location: { lat: 27.7007, lng: 85.3301 },
     ratesObject: { type: "per-job", amount: 1000, details: "Initial visit & diagnosis. Hourly rate applies for extended work." },
@@ -71,10 +75,11 @@ const mockProvidersRawData: RawProviderData[] = [
     profileImage: "https://placehold.co/300x300.png?text=SE",
   },
   {
+    id: "mock-provider-uid-3",
     name: "Hari Appliance Repairs",
     category: "appliance-repair",
     servicesOfferedArray: ["AC Repair", "Fridge Servicing", "Washing Machine Fix"],
-    contactInfo: { phone: "96XXXXXXXX", email: "hari.appliance@example.com" },
+    contactInfo: { phone: "9800000003", email: "hari.appliance@example.com" },
     address: "Thapathali, Kathmandu",
     location: { lat: 27.6937, lng: 85.3180 },
     ratesObject: { type: "varies", minAmount: 500, maxAmount: 2500, details: "Inspection fee Rs. 300, waived if service availed." },
@@ -82,10 +87,11 @@ const mockProvidersRawData: RawProviderData[] = [
     profileImage: "https://placehold.co/300x300.png?text=HA",
   },
   {
+    id: "mock-provider-uid-4",
     name: "Gita Home Tutions",
     category: "tuition-teacher",
     servicesOfferedArray: ["Maths (Class 1-10)", "Science (Class 1-10)", "English Language"],
-    contactInfo: { phone: "95XXXXXXX0", email: "gita.tutions@example.com" },
+    contactInfo: { phone: "9800000004", email: "gita.tutions@example.com" },
     address: "Patan Durbar Square, Lalitpur",
     location: { lat: 27.6730, lng: 85.3240 },
     ratesObject: { type: "fixed-project", amount: 5000, details: "Per subject, per month. Group discounts available." },
@@ -93,20 +99,22 @@ const mockProvidersRawData: RawProviderData[] = [
     profileImage: "https://placehold.co/300x300.png?text=GT",
   },
    {
+    id: "mock-provider-uid-5",
     name: "CleanSweep Home Services",
     category: "house-cleaning",
     servicesOfferedArray: ["General house cleaning", "Deep cleaning", "Office cleaning"],
-    contactInfo: { phone: "94XXXXXXX1", email: "cleansweep@example.com" },
+    contactInfo: { phone: "9800000005", email: "cleansweep@example.com" },
     address: "Asan, Kathmandu",
     ratesObject: { type: "per-job", amount: 1200, details: "For standard 2BHK. Additional charges for larger areas or deep cleaning." },
     availabilityString: "Mon-Sun, 9 AM - 5 PM",
     profileImage: "https://placehold.co/300x300.png?text=CS",
   },
   {
+    id: "mock-provider-uid-6",
     name: "Creative Wall Painters",
     category: "painter",
     servicesOfferedArray: ["Interior Painting", "Exterior Painting", "Wall Texturing"],
-    contactInfo: { phone: "93XXXXXXX2", email: "creativewalls@example.com" },
+    contactInfo: { phone: "9800000006", email: "creativewalls@example.com" },
     address: "Jawalakhel, Lalitpur",
     ratesObject: { type: "free-consultation", details: "Free on-site inspection and detailed quotation provided for all painting projects. No obligation." },
     availabilityString: "Mon-Sat, 10 AM - 5 PM",
@@ -132,12 +140,13 @@ const parseAvailabilityString = (availabilityString: string): ServiceProviderAva
     });
     if (lowerStr.includes("weekend")) { daysFound.add("Sat"); daysFound.add("Sun"); }
     availability.days = Array.from(daysFound);
-    if(availability.days.length === 0 && !lowerStr.includes("appointment")) availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-    const timeRegex = /(\d{1,2})\s*(am|pm)?\s*-\s*(\d{1,2})\s*(am|pm)?/;
+    if(availability.days.length === 0 && !lowerStr.includes("appointment")) availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri"]; // Default if no specific days mentioned
+    
+    const timeRegex = /(\d{1,2})\s*(am|pm)?\s*-\s*(\d{1,2})\s*(am|pm)?/i; // Case insensitive for AM/PM
     const timeMatch = availabilityString.match(timeRegex);
     if (timeMatch) {
-        let startHour = parseInt(timeMatch[1]); const startPeriod = timeMatch[2];
-        let endHour = parseInt(timeMatch[3]); const endPeriod = timeMatch[4];
+        let startHour = parseInt(timeMatch[1]); const startPeriod = timeMatch[2]?.toLowerCase();
+        let endHour = parseInt(timeMatch[3]); const endPeriod = timeMatch[4]?.toLowerCase();
         if (startPeriod === "pm" && startHour < 12) startHour += 12;
         if (startPeriod === "am" && startHour === 12) startHour = 0; 
         if (endPeriod === "pm" && endHour < 12) endHour += 12;
@@ -147,9 +156,13 @@ const parseAvailabilityString = (availabilityString: string): ServiceProviderAva
     } else {
         if (lowerStr.includes("morning") || lowerStr.includes("9 am")) availability.startTime = "09:00";
         if (lowerStr.includes("afternoon") || lowerStr.includes("1 pm")) availability.startTime = "13:00";
-        if (lowerStr.includes("evening") || lowerStr.includes("5 pm")) availability.endTime = "17:00";
+        if (lowerStr.includes("evening")) availability.endTime = "17:00"; // Default end for evening
         if (lowerStr.includes("4 pm")) availability.startTime = "16:00";
         if (lowerStr.includes("7 pm")) availability.endTime = "19:00";
+    }
+
+    if (!availability.startTime && !availability.endTime && lowerStr.includes("flexible")) {
+      availability.notes = (availability.notes ? availability.notes + "; " : "") + "Flexible hours";
     }
     if(lowerStr.includes("by appointment")) availability.notes = (availability.notes ? availability.notes + "; " : "") + "By appointment only";
     if(lowerStr.includes("24/7")) {
@@ -161,10 +174,10 @@ const parseAvailabilityString = (availabilityString: string): ServiceProviderAva
 };
 
 export const mockServiceProviders: ServiceProvider[] = mockProvidersRawData.map(
-  (providerData, index) => {
+  (providerData) => {
     const reviews = generateReviews(providerData.name);
     return {
-      id: `${providerData.category}-${index + 1}`,
+      id: providerData.id, // Using the raw id as the main ServiceProvider id (which should be UID)
       name: providerData.name,
       category: providerData.category,
       servicesOffered: providerData.servicesOfferedArray,
@@ -180,3 +193,103 @@ export const mockServiceProviders: ServiceProvider[] = mockProvidersRawData.map(
     };
   }
 );
+
+
+export const mockServiceRequests: ServiceRequest[] = [
+  {
+    id: "req-001",
+    userId: "client-uid-1",
+    clientName: "Aasha Thapa",
+    clientPhone: "9812345670",
+    clientAddress: "Lazimpat, Kathmandu",
+    clientServiceNeeded: "My kitchen sink is clogged and water is backing up. Need urgent help.",
+    requestedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), // 1 hour ago
+    providerId: "mock-provider-uid-1", // Ramesh Plumbing
+    serviceCategory: "plumber",
+    status: "pending_provider_action",
+  },
+  {
+    id: "req-002",
+    userId: "client-uid-2",
+    clientName: "Bikram Rai",
+    clientPhone: "9809876543",
+    clientAddress: "Sanepa, Lalitpur",
+    clientServiceNeeded: "Need to install new ceiling fans in two rooms and fix a faulty light switch.",
+    requestedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
+    providerId: "mock-provider-uid-2", // Sita's Electrical
+    serviceCategory: "electrician",
+    status: "pending_provider_action",
+  },
+  {
+    id: "req-003",
+    userId: "client-uid-3",
+    clientName: "Sunita Gurung",
+    clientPhone: "9855555555",
+    clientAddress: "Koteshwor, Kathmandu",
+    clientServiceNeeded: "Washing machine is not spinning. Makes a loud noise.",
+    requestedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
+    providerId: "mock-provider-uid-3", // Hari Appliance
+    serviceCategory: "appliance-repair",
+    status: "accepted_by_provider", // Example of an accepted one
+    estimatedJobValueByProvider: 1200,
+    adminFeeCalculated: 96,
+    adminFeePaid: true,
+  },
+  {
+    id: "req-004",
+    userId: "client-uid-4",
+    clientName: "Rajesh Shrestha",
+    clientPhone: "9841122333",
+    clientAddress: "Old Baneshwor, Kathmandu",
+    clientServiceNeeded: "Looking for a math tutor for my son in Class 8, CBSE board. Preferably 3 days a week.",
+    requestedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+    providerId: "mock-provider-uid-4", // Gita Tutions
+    serviceCategory: "tuition-teacher",
+    status: "job_completed", // Example for work history
+    estimatedJobValueByProvider: 4500,
+    adminFeeCalculated: 360,
+    adminFeePaid: true,
+  },
+  {
+    id: "req-005",
+    userId: "client-uid-5",
+    clientName: "Deepa Lama",
+    clientPhone: "9860000000",
+    clientAddress: "Maharajgunj, Kathmandu",
+    clientServiceNeeded: "Need a thorough cleaning for my 3BHK apartment before a party.",
+    requestedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), // 5 hours ago
+    providerId: "mock-provider-uid-1", // Assigning another to Ramesh for more data
+    serviceCategory: "house-cleaning",
+    status: "pending_provider_action",
+  },
+   {
+    id: "req-006",
+    userId: "client-uid-6",
+    clientName: "Nabin Karki",
+    clientPhone: "9801234567",
+    clientAddress: "Budhanilkantha, Kathmandu",
+    clientServiceNeeded: "The main circuit breaker keeps tripping. Need an electrician to diagnose and fix.",
+    requestedAt: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(), // 10 hours ago
+    providerId: "mock-provider-uid-2", // Sita's Electrical
+    serviceCategory: "electrician",
+    status: "pending_admin_fee", // Example for a provider who accepted but needs to pay admin fee
+    estimatedJobValueByProvider: 1500,
+    adminFeeCalculated: 120,
+    adminFeePaid: false,
+  },
+  {
+    id: "req-007",
+    userId: "client-uid-7",
+    clientName: "Anita Maharjan",
+    clientPhone: "9807654321",
+    clientAddress: "Boudha, Kathmandu",
+    clientServiceNeeded: "My AC is not cooling properly. Might need a gas refill or servicing.",
+    requestedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
+    providerId: "mock-provider-uid-3", // Hari Appliance
+    serviceCategory: "appliance-repair",
+    status: "awaiting_admin_confirmation", // Provider paid, admin needs to confirm
+    estimatedJobValueByProvider: 2000,
+    adminFeeCalculated: 160,
+    adminFeePaid: true, // Provider marked as paid
+  },
+];
