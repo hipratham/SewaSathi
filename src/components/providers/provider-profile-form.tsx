@@ -25,10 +25,23 @@ import {
 } from "@/components/ui/select";
 import { serviceCategories, type ServiceCategory, type RateType, rateTypeOptions, type ServiceProviderRates } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { Save, LocateFixed, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { Save, LocateFixed, Loader2, Edit, CheckCircle } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/auth-context";
+import { database } from "@/lib/firebase";
+import { ref, set, get } from "firebase/database";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const daysOfWeek = [
   { id: "Mon", label: "Mon" },
@@ -49,17 +62,17 @@ const providerProfileSchema = z.object({
   address: z.string().min(5, { message: "Address must be at least 5 characters." }),
   phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }),
   email: z.string().email({ message: "Invalid email address." }),
-  servicesOfferedDescription: z.string().optional(), 
+  servicesOfferedDescription: z.string().optional(),
   rateType: z.custom<RateType>((val) => rateTypeOptions.map(rt => rt.value).includes(val as RateType), {
     message: "Please select a valid rate type.",
   }),
   rateAmount: z.coerce.number().positive({ message: "Amount must be a positive number." }).optional(),
-  rateMinAmount: z.coerce.number().positive({ message: "Minimum amount must be a positive number." }).optional(),
-  rateMaxAmount: z.coerce.number().positive({ message: "Maximum amount must be a positive number." }).optional(),
+  rateMinAmount: z.coerce.number().positive({ message: "Minimum amount must be positive." }).optional(),
+  rateMaxAmount: z.coerce.number().positive({ message: "Maximum amount must be positive." }).optional(),
   rateDetails: z.string().max(200, { message: "Details should be concise (max 200 characters)." }).optional(),
   availableDays: z.array(z.string()).nonempty({ message: "Please select at least one available day." }),
-  startTime: z.string().optional(),
-  endTime: z.string().optional(),
+  startTime: z.string().optional().refine(val => val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), { message: "Invalid time format."}),
+  endTime: z.string().optional().refine(val => val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), { message: "Invalid time format."}),
   availabilityNotes: z.string().optional(),
 })
 .refine(data => {
@@ -72,16 +85,16 @@ const providerProfileSchema = z.object({
   path: ["otherCategoryDescription"],
 })
 .refine(data => {
-  if (data.startTime && !data.endTime) return false; 
-  if (!data.startTime && data.endTime) return false; 
+  if (data.startTime && !data.endTime) return false;
+  if (!data.startTime && data.endTime) return false;
   if (data.startTime && data.endTime) {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
-    if (endH < startH || (endH === startH && endM <= startM)) return false; 
+    if (endH < startH || (endH === startH && endM <= startM)) return false;
   }
   return true;
 }, {
-  message: "End time must be after start time. Both are required if one is provided.",
+  message: "End time must be after start time. Both are required if one is provided, or leave both blank.",
   path: ["endTime"],
 })
 .refine(data => {
@@ -102,7 +115,7 @@ const providerProfileSchema = z.object({
   return true;
 }, {
   message: "Minimum and Maximum amounts are required and must be positive for 'Varies' rate type.",
-  path: ["rateMinAmount"], 
+  path: ["rateMinAmount"],
 })
 .refine(data => {
   if (data.rateType === "varies" && data.rateMinAmount && data.rateMaxAmount) {
@@ -123,13 +136,86 @@ const providerProfileSchema = z.object({
     path: ["rateDetails"]
 });
 
+type ProviderProfileFormValues = z.infer<typeof providerProfileSchema>;
+
+// Helper function to map database data to form data structure
+function mapDbDataToForm(dbData: any): Partial<ProviderProfileFormValues> {
+    return {
+        name: dbData.name || "",
+        category: dbData.category,
+        otherCategoryDescription: dbData.otherCategoryDescription || "",
+        address: dbData.address || "",
+        phone: dbData.contactInfo?.phone || "",
+        email: dbData.contactInfo?.email || "",
+        servicesOfferedDescription: dbData.servicesOffered?.join(', ') || "",
+        rateType: dbData.rates?.type,
+        rateAmount: dbData.rates?.amount,
+        rateMinAmount: dbData.rates?.minAmount,
+        rateMaxAmount: dbData.rates?.maxAmount,
+        rateDetails: dbData.rates?.details || "",
+        availableDays: dbData.availability?.days || [],
+        startTime: dbData.availability?.startTime || "",
+        endTime: dbData.availability?.endTime || "",
+        availabilityNotes: dbData.availability?.notes || "",
+    };
+}
+
+// Helper to format current values for confirmation dialog
+function formatCurrentValuesForDialog(values: ProviderProfileFormValues, fieldLabels: Record<string, string>): string[] {
+    const summary: string[] = [];
+    (Object.keys(values) as Array<keyof ProviderProfileFormValues>).forEach(key => {
+        const label = fieldLabels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); // Auto-generate label if not found
+        let value = values[key];
+        if (value === undefined || value === null || value === "") {
+            // Don't show empty optional fields in summary or show as 'Not set'
+            if(key === 'servicesOfferedDescription' || key === 'otherCategoryDescription' || key === 'rateAmount' || key === 'rateMinAmount' || key === 'rateMaxAmount' || key === 'rateDetails' || key === 'startTime' || key === 'endTime' || key === 'availabilityNotes') {
+                 if (value !== undefined && value !== null && value !== "") summary.push(`${label}: ${value}`);
+                 else summary.push(`${label}: Not set`); // Explicitly show 'Not set' for clarity
+            } else if (value !== undefined) { // for required fields that might be empty string during form fill but are actually ""
+                summary.push(`${label}: ${value}`);
+            }
+        } else if (Array.isArray(value)) {
+            summary.push(`${label}: ${value.join(', ') || 'None'}`);
+        } else {
+            summary.push(`${label}: ${value}`);
+        }
+    });
+    return summary;
+}
+
+const fieldDisplayLabels: Record<string, string> = {
+    name: 'Name',
+    category: 'Service Category',
+    otherCategoryDescription: 'Other Service Description',
+    address: 'Address / Service Area',
+    phone: 'Phone Number',
+    email: 'Email Address',
+    servicesOfferedDescription: 'Services Offered (comma-separated)',
+    rateType: 'Rate Structure',
+    rateAmount: 'Rate Amount (NPR)',
+    rateMinAmount: 'Minimum Rate Amount (NPR)',
+    rateMaxAmount: 'Maximum Rate Amount (NPR)',
+    rateDetails: 'Rate Details',
+    availableDays: 'Available Days',
+    startTime: 'Typical Start Time',
+    endTime: 'Typical End Time',
+    availabilityNotes: 'Availability Notes',
+};
+
 
 export default function ProviderProfileForm() {
   const { toast } = useToast();
   const [isLocating, setIsLocating] = useState(false);
-  const router = useRouter();
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasExistingProfile, setHasExistingProfile] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmationSummary, setConfirmationSummary] = useState<string[]>([]);
 
-  const form = useForm<z.infer<typeof providerProfileSchema>>({
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const form = useForm<ProviderProfileFormValues>({
     resolver: zodResolver(providerProfileSchema),
     defaultValues: {
       name: "",
@@ -137,7 +223,7 @@ export default function ProviderProfileForm() {
       phone: "",
       email: "",
       servicesOfferedDescription: "",
-      rateType: "varies",
+      rateType: "varies", // Default rate type
       rateAmount: undefined,
       rateMinAmount: undefined,
       rateMaxAmount: undefined,
@@ -153,14 +239,43 @@ export default function ProviderProfileForm() {
   const selectedCategory = form.watch("category");
   const selectedRateType = form.watch("rateType");
 
-  function onSubmit(values: z.infer<typeof providerProfileSchema>) {
-    const availabilityData = {
-        days: values.availableDays,
-        startTime: values.startTime || undefined, // Ensure empty strings become undefined
-        endTime: values.endTime || undefined,   // Ensure empty strings become undefined
-        notes: values.availabilityNotes || undefined,
-    };
-    
+  useEffect(() => {
+    if (user?.uid) {
+      setIsLoadingData(true);
+      const profileRef = ref(database, `providerProfiles/${user.uid}`);
+      get(profileRef).then((snapshot) => {
+        if (snapshot.exists()) {
+          const dbData = snapshot.val();
+          const formData = mapDbDataToForm(dbData);
+          form.reset(formData); // Pre-fill the form
+          setHasExistingProfile(true);
+        } else {
+          setHasExistingProfile(false);
+           // If no profile, ensure email is pre-filled from auth if available
+          if(user.email) form.setValue('email', user.email);
+          if(user.displayName) form.setValue('name', user.displayName);
+        }
+      }).catch(error => {
+        console.error("Error fetching provider profile:", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not load your profile data." });
+        setHasExistingProfile(false);
+      }).finally(() => {
+        setIsLoadingData(false);
+      });
+    } else {
+      setIsLoadingData(false); // No user, so nothing to load
+    }
+  }, [user, form, toast]);
+
+
+  async function handleActualSave() {
+    if (!user?.uid) {
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in to save a profile." });
+      return;
+    }
+    setIsSubmitting(true);
+
+    const values = form.getValues();
     const servicesArray = values.servicesOfferedDescription
       ? values.servicesOfferedDescription.split(',').map(s => s.trim()).filter(s => s.length > 0)
       : [];
@@ -173,7 +288,7 @@ export default function ProviderProfileForm() {
         details: values.rateDetails || undefined,
     };
 
-    const submissionData = { 
+    const submissionData = {
       name: values.name,
       category: values.category,
       otherCategoryDescription: values.category === 'other' ? values.otherCategoryDescription : undefined,
@@ -182,19 +297,40 @@ export default function ProviderProfileForm() {
         phone: values.phone,
         email: values.email,
       },
-      servicesOffered: servicesArray, 
-      availability: availabilityData,
+      servicesOffered: servicesArray,
+      availability: {
+          days: values.availableDays,
+          startTime: values.startTime || undefined,
+          endTime: values.endTime || undefined,
+          notes: values.availabilityNotes || undefined,
+      },
       rates: ratesData,
+      updatedAt: new Date().toISOString(), // Add timestamp
     };
 
-    console.log("Provider profile submitted:", submissionData);
-    toast({
-      title: "Profile Saved!",
-      description: "Your service provider profile has been submitted (mock).",
-    });
-    router.push('/home-provider');
+    try {
+      await set(ref(database, `providerProfiles/${user.uid}`), submissionData);
+      toast({
+        title: hasExistingProfile ? "Profile Updated!" : "Profile Saved!",
+        description: "Your service provider profile has been successfully saved.",
+      });
+      setHasExistingProfile(true); // Mark as existing after successful save
+      router.push('/home-provider');
+    } catch (error) {
+      console.error("Error saving provider profile:", error);
+      toast({ variant: "destructive", title: "Save Failed", description: "Could not save your profile. Please try again." });
+    } finally {
+      setIsSubmitting(false);
+      setShowConfirmDialog(false);
+    }
   }
-  
+
+  function onSubmit(values: ProviderProfileFormValues) {
+    const summary = formatCurrentValuesForDialog(values, fieldDisplayLabels);
+    setConfirmationSummary(summary);
+    setShowConfirmDialog(true);
+  }
+
   const handleUseCurrentLocation = async () => {
     if (navigator.geolocation) {
       setIsLocating(true);
@@ -208,15 +344,9 @@ export default function ProviderProfileForm() {
             let formattedAddress = "";
             if (data.address) {
               const addr = data.address;
-              if (addr.road) formattedAddress += addr.road;
-              if (addr.suburb) formattedAddress += (formattedAddress ? ", " : "") + addr.suburb;
-              if (addr.city_district) formattedAddress += (formattedAddress ? ", " : "") + addr.city_district;
-              else if (addr.city) formattedAddress += (formattedAddress ? ", " : "") + addr.city;
-              else if (addr.town) formattedAddress += (formattedAddress ? ", " : "") + addr.town;
-              else if (addr.village) formattedAddress += (formattedAddress ? ", " : "") + addr.village;
-              if (addr.country && (formattedAddress === "" || !formattedAddress.toLowerCase().includes(addr.country.toLowerCase()))) {
-                 formattedAddress += (formattedAddress ? ", " : "") + addr.country;
-              }
+              const parts = [addr.road, addr.neighbourhood, addr.suburb, addr.city_district, addr.city, addr.town, addr.village, addr.county, addr.state, addr.country].filter(Boolean);
+              formattedAddress = parts.slice(0, 3).join(', '); // Take first few relevant parts
+              if (!formattedAddress && data.display_name) formattedAddress = data.display_name;
             }
             const displayAddress = formattedAddress || data.display_name || `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Please refine.`;
             form.setValue("address", displayAddress, { shouldValidate: true });
@@ -240,195 +370,114 @@ export default function ProviderProfileForm() {
     }
   };
 
+  if (isLoadingData) {
+    return (
+      <div className="flex justify-center items-center p-10">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">Loading your profile...</p>
+      </div>
+    );
+  }
+
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-6 md:p-8 bg-card rounded-lg shadow-lg">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Your Full Name or Business Name</FormLabel>
-              <FormControl>
-                <Input placeholder="e.g. Sita Kumari or Sita's Repair Shop" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="category"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Service Category</FormLabel>
-              <Select 
-                onValueChange={(value) => {
-                  field.onChange(value);
-                  if (value !== 'other') form.setValue('otherCategoryDescription', ''); 
-                }} 
-                defaultValue={field.value}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select your primary service category" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {serviceCategories.map((category) => (
-                    <SelectItem key={category.value} value={category.value}>
-                      {category.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {selectedCategory === "other" && (
+    <>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-6 md:p-8 bg-card rounded-lg shadow-lg">
           <FormField
             control={form.control}
-            name="otherCategoryDescription"
+            name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Describe Your "Other" Service</FormLabel>
+                <FormLabel>Your Full Name or Business Name</FormLabel>
                 <FormControl>
-                  <Textarea
-                    placeholder="Please specify the type of service you offer (min 10 characters)."
-                    className="resize-none"
-                    rows={3}
-                    {...field}
-                  />
+                  <Input placeholder="e.g. Sita Kumari or Sita's Repair Shop" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-        )}
 
-        <FormField
-          control={form.control}
-          name="address"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Your Address / Service Area</FormLabel>
-              <div className="flex gap-2">
-                <FormControl>
-                  <Input placeholder="e.g. Kalanki, Kathmandu" {...field} />
-                </FormControl>
-                 <Button type="button" variant="outline" onClick={handleUseCurrentLocation} aria-label="Use current location" disabled={isLocating}>
-                  {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
-                </Button>
-              </div>
-              <FormDescription>Provide your main operating address or service area.</FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
-        <div className="grid md:grid-cols-2 gap-6">
           <FormField
             control={form.control}
-            name="phone"
+            name="category"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Phone Number</FormLabel>
-                <FormControl>
-                  <Input type="tel" placeholder="e.g. 98XXXXXXXX" {...field} />
-                </FormControl>
+                <FormLabel>Service Category</FormLabel>
+                <Select
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    if (value !== 'other') form.setValue('otherCategoryDescription', '');
+                  }}
+                  value={field.value} // Ensure value is controlled
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select your primary service category" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {serviceCategories.map((category) => (
+                      <SelectItem key={category.value} value={category.value}>
+                        {category.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email Address</FormLabel>
-                <FormControl>
-                  <Input type="email" placeholder="e.g. your.email@example.com" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
 
-        <FormField
-          control={form.control}
-          name="servicesOfferedDescription"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Services Offered (Optional)</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="List specific services, separated by commas (e.g., Leak repair, faucet installation). If blank, your category is the primary indicator."
-                  className="resize-none"
-                  rows={4}
-                  {...field}
-                />
-              </FormControl>
-              <FormDescription>This helps clients understand your expertise.</FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="rateType"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Rate Structure</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select how you charge" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {rateTypeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {selectedRateType && ["per-hour", "per-job", "fixed-project"].includes(selectedRateType) && (
+          {selectedCategory === "other" && (
             <FormField
-                control={form.control}
-                name="rateAmount"
-                render={({ field }) => (
+              control={form.control}
+              name="otherCategoryDescription"
+              render={({ field }) => (
                 <FormItem>
-                    <FormLabel>Amount (NPR)</FormLabel>
-                    <FormControl>
-                    <Input type="number" placeholder="e.g., 800" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
-                    </FormControl>
-                    <FormMessage />
+                  <FormLabel>Describe Your "Other" Service</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Please specify the type of service you offer (min 10 characters)."
+                      className="resize-none"
+                      rows={3}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
                 </FormItem>
-                )}
+              )}
             />
-        )}
+          )}
 
-        {selectedRateType === "varies" && (
+          <FormField
+            control={form.control}
+            name="address"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Your Address / Service Area</FormLabel>
+                <div className="flex gap-2">
+                  <FormControl>
+                    <Input placeholder="e.g. Kalanki, Kathmandu" {...field} />
+                  </FormControl>
+                  <Button type="button" variant="outline" onClick={handleUseCurrentLocation} aria-label="Use current location" disabled={isLocating}>
+                    {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
+                  </Button>
+                </div>
+                <FormDescription>Provide your main operating address or service area.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
           <div className="grid md:grid-cols-2 gap-6">
             <FormField
               control={form.control}
-              name="rateMinAmount"
+              name="phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Minimum Amount (NPR)</FormLabel>
+                  <FormLabel>Phone Number</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="e.g., 500" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
+                    <Input type="tel" placeholder="e.g. 98XXXXXXXX" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -436,148 +485,261 @@ export default function ProviderProfileForm() {
             />
             <FormField
               control={form.control}
-              name="rateMaxAmount"
+              name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Maximum Amount (NPR)</FormLabel>
+                  <FormLabel>Email Address</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="e.g., 1500" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
+                    <Input type="email" placeholder="e.g. your.email@example.com" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
           </div>
-        )}
-        
-        <FormField
+
+          <FormField
             control={form.control}
-            name="rateDetails"
+            name="servicesOfferedDescription"
             render={({ field }) => (
-            <FormItem>
-                <FormLabel>
-                    {selectedRateType === "free-consultation" 
-                        ? "Describe Free Consultation" 
-                        : selectedRateType === "varies"
-                        ? "Optional: Further explanation for varied rates"
-                        : "Optional: Additional notes about your rate"}
-                </FormLabel>
+              <FormItem>
+                <FormLabel>Services Offered (Optional, comma-separated)</FormLabel>
                 <FormControl>
-                <Textarea
-                    placeholder={
-                        selectedRateType === "free-consultation" 
-                        ? "Describe what the free consultation includes (e.g., 30-min initial assessment over phone, min 10 characters)."
-                        : selectedRateType === "varies"
-                        ? "e.g., Price depends on job complexity, materials needed, and duration."
-                        : "e.g., Minimum 2-hour charge, travel fees may apply outside city limits."
-                    }
+                  <Textarea
+                    placeholder="e.g., Leak repair, faucet installation. If blank, your category is the primary indicator."
+                    className="resize-none"
+                    rows={4}
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>This helps clients understand your expertise.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="rateType"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Rate Structure</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select how you charge" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {rateTypeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {selectedRateType && ["per-hour", "per-job", "fixed-project"].includes(selectedRateType) && (
+              <FormField
+                  control={form.control}
+                  name="rateAmount"
+                  render={({ field }) => (
+                  <FormItem>
+                      <FormLabel>Amount (NPR)</FormLabel>
+                      <FormControl>
+                      <Input type="number" placeholder="e.g., 800" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
+                      </FormControl>
+                      <FormMessage />
+                  </FormItem>
+                  )}
+              />
+          )}
+
+          {selectedRateType === "varies" && (
+            <div className="grid md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="rateMinAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Minimum Amount (NPR)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="e.g., 500" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="rateMaxAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Maximum Amount (NPR)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="e.g., 1500" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
+
+          <FormField
+              control={form.control}
+              name="rateDetails"
+              render={({ field }) => (
+              <FormItem>
+                  <FormLabel>
+                      {selectedRateType === "free-consultation"
+                          ? "Describe Free Consultation (Required)"
+                          : selectedRateType === "varies"
+                          ? "Optional: Further explanation for varied rates"
+                          : "Optional: Additional notes about your rate"}
+                  </FormLabel>
+                  <FormControl>
+                  <Textarea
+                      placeholder={
+                          selectedRateType === "free-consultation"
+                          ? "Describe what the free consultation includes (e.g., 30-min initial assessment over phone, min 10 characters)."
+                          : selectedRateType === "varies"
+                          ? "e.g., Price depends on job complexity, materials needed, and duration."
+                          : "e.g., Minimum 2-hour charge, travel fees may apply outside city limits."
+                      }
+                      className="resize-none"
+                      rows={3}
+                      {...field}
+                  />
+                  </FormControl>
+                  <FormDescription>
+                      {selectedRateType === "free-consultation"
+                          ? "This description is required for free consultations."
+                          : selectedRateType === "varies"
+                          ? "Provide context if the range isn't self-explanatory."
+                          : "Add any clarifications about your pricing if needed."
+                      }
+                  </FormDescription>
+                  <FormMessage />
+              </FormItem>
+              )}
+          />
+
+          <FormField
+            control={form.control}
+            name="availableDays"
+            render={() => (
+              <FormItem>
+                <div className="mb-4">
+                  <FormLabel className="text-base">Available Days</FormLabel>
+                  <FormDescription>Select the days you are typically available.</FormDescription>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  {daysOfWeek.map((day) => (
+                    <FormField
+                      key={day.id}
+                      control={form.control}
+                      name="availableDays"
+                      render={({ field }) => (
+                          <FormItem key={day.id} className="flex flex-row items-start space-x-3 space-y-0">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value?.includes(day.id)}
+                                onCheckedChange={(checked) => {
+                                  return checked
+                                    ? field.onChange([...(field.value || []), day.id])
+                                    : field.onChange((field.value || []).filter((value) => value !== day.id));
+                                }}
+                              />
+                            </FormControl>
+                            <FormLabel className="font-normal">{day.label}</FormLabel>
+                          </FormItem>
+                      )}
+                    />
+                  ))}
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="startTime"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Typical Daily Start Time (Optional)</FormLabel>
+                  <FormControl><Input type="time" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="endTime"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Typical Daily End Time (Optional)</FormLabel>
+                  <FormControl><Input type="time" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <FormField
+            control={form.control}
+            name="availabilityNotes"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Additional Availability Notes (Optional)</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="e.g., Weekends by appointment only, Not available on public holidays"
                     className="resize-none"
                     rows={3}
                     {...field}
-                />
-                </FormControl>
-                 <FormDescription>
-                    {selectedRateType === "free-consultation" 
-                        ? "This description is required."
-                        : selectedRateType === "varies"
-                        ? "Provide context if the range isn't self-explanatory."
-                        : "Add any clarifications about your pricing if needed."
-                    }
-                 </FormDescription>
-                <FormMessage />
-            </FormItem>
-            )}
-        />
-
-        <FormField
-          control={form.control}
-          name="availableDays"
-          render={() => (
-            <FormItem>
-              <div className="mb-4">
-                <FormLabel className="text-base">Available Days</FormLabel>
-                <FormDescription>Select the days you are typically available.</FormDescription>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {daysOfWeek.map((day) => (
-                  <FormField
-                    key={day.id}
-                    control={form.control}
-                    name="availableDays"
-                    render={({ field }) => (
-                        <FormItem key={day.id} className="flex flex-row items-start space-x-3 space-y-0">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value?.includes(day.id)}
-                              onCheckedChange={(checked) => {
-                                return checked
-                                  ? field.onChange([...(field.value || []), day.id])
-                                  : field.onChange((field.value || []).filter((value) => value !== day.id));
-                              }}
-                            />
-                          </FormControl>
-                          <FormLabel className="font-normal">{day.label}</FormLabel>
-                        </FormItem>
-                    )}
                   />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
+            {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : (hasExistingProfile ? <Edit className="mr-2 h-5 w-5" /> : <Save className="mr-2 h-5 w-5" />)}
+            {hasExistingProfile ? "Update Profile" : "Save Profile"}
+          </Button>
+        </form>
+      </Form>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Profile {hasExistingProfile ? "Update" : "Creation"}</AlertDialogTitle>
+            <AlertDialogDescription className="max-h-60 overflow-y-auto">
+              Please review your information before saving:
+              <ul className="mt-2 space-y-1 text-sm text-foreground list-disc list-inside">
+                {confirmationSummary.map((item, index) => (
+                  <li key={index}>{item}</li>
                 ))}
-              </div>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <div className="grid md:grid-cols-2 gap-6">
-          <FormField
-            control={form.control}
-            name="startTime"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Typical Daily Start Time (Optional)</FormLabel>
-                <FormControl><Input type="time" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="endTime"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Typical Daily End Time (Optional)</FormLabel>
-                <FormControl><Input type="time" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-        
-        <FormField
-          control={form.control}
-          name="availabilityNotes"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Additional Availability Notes (Optional)</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="e.g., Weekends by appointment only, Not available on public holidays"
-                  className="resize-none"
-                  rows={3}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <Button type="submit" className="w-full text-lg py-6" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="mr-2 h-5 w-5" />} 
-          Save Profile
-        </Button>
-      </form>
-    </Form>
+              </ul>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleActualSave} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+              Confirm & Save
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
-
-    
