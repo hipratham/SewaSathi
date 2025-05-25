@@ -1,17 +1,30 @@
+
 export type ServiceCategory =
-  | "mechanic"
-  | "plumber"
   | "electrician"
-  | "toilet-helper"
-  | "tution-teacher"
+  | "plumber"
+  | "house-cleaning"
+  | "painter"
+  | "appliance-repair"
+  | "cook"
+  | "cctv-installer"
+  | "carpenter"
+  | "beautician"
+  | "babysitter"
+  | "tuition-teacher"
   | "other";
 
 export const serviceCategories: { value: ServiceCategory; label: string }[] = [
-  { value: "mechanic", label: "Mechanic" },
-  { value: "plumber", label: "Plumber" },
   { value: "electrician", label: "Electrician" },
-  { value: "toilet-helper", label: "Toilet Helper" },
-  { value: "tution-teacher", label: "Tution Teacher" },
+  { value: "plumber", label: "Plumber" },
+  { value: "house-cleaning", label: "House Cleaning / Maid Services" },
+  { value: "painter", label: "Painter / Wall Repair" },
+  { value: "appliance-repair", label: "AC / Fridge / Washing Machine Repair" },
+  { value: "cook", label: "Cook / Home Chef" },
+  { value: "cctv-installer", label: "CCTV / Security System Installer" },
+  { value: "carpenter", label: "Carpenter / Furniture Repair" },
+  { value: "beautician", label: "Home-Based Beautician / Salon Services" },
+  { value: "babysitter", label: "Babysitter / Nanny Services" },
+  { value: "tuition-teacher", label: "Tuition Teacher / Home Tutor" },
   { value: "other", label: "Other" },
 ];
 
@@ -43,6 +56,7 @@ export interface ServiceProvider {
   reviews: Review[];
   overallRating: number; // Calculated average
   profileImage?: string;
+  otherCategoryDescription?: string; // Added for "Other" category
 }
 
 export interface ServiceRequest {

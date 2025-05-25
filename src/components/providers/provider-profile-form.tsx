@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -28,13 +29,24 @@ import { Save, LocateFixed } from "lucide-react";
 
 const providerProfileSchema = z.object({
   name: z.string().min(2, { message: "Full name must be at least 2 characters." }),
-  category: z.custom<ServiceCategory>(),
+  category: z.custom<ServiceCategory>((val) => serviceCategories.map(sc => sc.value).includes(val as ServiceCategory), {
+    message: "Please select a valid service category.",
+  }),
+  otherCategoryDescription: z.string().optional(),
   address: z.string().min(5, { message: "Address must be at least 5 characters." }),
   phone: z.string().optional(),
   email: z.string().email({ message: "Invalid email address." }).optional(),
   servicesOffered: z.string().min(10, { message: "Describe services offered (min 10 characters)." }),
   rates: z.string().min(3, { message: "Rates description is required." }),
   availability: z.string().min(5, { message: "Availability information is required." }),
+}).refine(data => {
+  if (data.category === 'other') {
+    return data.otherCategoryDescription && data.otherCategoryDescription.trim().length >= 10;
+  }
+  return true;
+}, {
+  message: "Please describe your service if 'Other' is selected (min 10 characters).",
+  path: ["otherCategoryDescription"],
 });
 
 export default function ProviderProfileForm() {
@@ -48,8 +60,11 @@ export default function ProviderProfileForm() {
       servicesOffered: "",
       rates: "",
       availability: "",
+      otherCategoryDescription: "",
     },
   });
+
+  const selectedCategory = form.watch("category");
 
   function onSubmit(values: z.infer<typeof providerProfileSchema>) {
     console.log("Provider profile submitted:", values);
@@ -103,7 +118,15 @@ export default function ProviderProfileForm() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Service Category</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select 
+                onValueChange={(value) => {
+                  field.onChange(value);
+                  if (value !== 'other') {
+                    form.setValue('otherCategoryDescription', ''); // Clear if not 'other'
+                  }
+                }} 
+                defaultValue={field.value}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select your primary service category" />
@@ -121,6 +144,27 @@ export default function ProviderProfileForm() {
             </FormItem>
           )}
         />
+
+        {selectedCategory === "other" && (
+          <FormField
+            control={form.control}
+            name="otherCategoryDescription"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Describe Your "Other" Service</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Please specify the type of service you offer (min 10 characters)."
+                    className="resize-none"
+                    rows={3}
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}
@@ -186,6 +230,7 @@ export default function ProviderProfileForm() {
                   {...field}
                 />
               </FormControl>
+              <FormDescription>This should be a general list of services related to your chosen category. If 'Other', specify your main service in the dedicated field above.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
