@@ -16,13 +16,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-import { LogIn, Loader2, Phone } from "lucide-react";
+import { LogIn, Loader2, Phone, MailQuestion } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail } from "firebase/auth";
 import { ref, get, set } from "firebase/database";
 import { auth, database } from "@/lib/firebase";
 import type { UserRole } from "@/context/auth-context";
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -54,11 +54,19 @@ const signInSchema = z.object({
   password: z.string().min(1, { message: "Password is required." }),
 });
 
+const resetPasswordSchema = z.object({
+  resetEmail: z.string().email({ message: "Invalid email address." }),
+});
+
 export default function SignInForm() {
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isPasswordResetLoading, setIsPasswordResetLoading] = useState(false);
+  const [showPasswordResetForm, setShowPasswordResetForm] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+
 
   const form = useForm<z.infer<typeof signInSchema>>({
     resolver: zodResolver(signInSchema),
@@ -76,24 +84,15 @@ export default function SignInForm() {
     if (snapshot.exists()) {
       role = snapshot.val() as UserRole;
     } else {
-      // If user authenticated (e.g. via Google) but no role in DB, attempt to set a default or prompt
-      // For now, if role is missing after ANY sign-in, it's an issue.
-      // A new user via Google Sign-Up should have their role set during that flow.
-      // If an existing Google user signs in and has no role, they likely bypassed the app's signup.
        const userName = user.displayName || "User";
        const userEmail = user.email;
-       // Check if user exists in DB at all
        const userNodeRef = ref(database, `users/${user.uid}`);
        const userNodeSnapshot = await get(userNodeRef);
        if (!userNodeSnapshot.exists() && userEmail) {
-         // User authenticated with Google but has no record in our DB.
-         // This is effectively a new sign-up via Google on the sign-in page.
-         // We must assign a role. Default to 'seeker' or prompt. For now, default 'seeker'.
-         // And save basic info.
          await set(ref(database, `users/${user.uid}`), {
             name: userName,
             email: userEmail,
-            role: "seeker", // Default role for Google sign-in if no DB record
+            role: "seeker", 
          });
          role = "seeker";
           toast({
@@ -106,8 +105,7 @@ export default function SignInForm() {
           title: "Sign In Problem",
           description: "Could not determine user role. Please complete your profile or sign up with a role.",
         });
-        // Potentially sign out: await auth.signOut();
-        return false; // Indicate failure to proceed
+        return false; 
        }
     }
     
@@ -123,7 +121,7 @@ export default function SignInForm() {
     } else {
       router.push("/"); 
     }
-    return true; // Indicate success
+    return true;
   };
 
   async function onSubmit(values: z.infer<typeof signInSchema>) {
@@ -138,6 +136,8 @@ export default function SignInForm() {
         errorMessage = "Invalid email or password. Please try again.";
       } else if (error.code === 'auth/operation-not-allowed') {
         errorMessage = "Email/Password sign-in is not enabled for this app. Please contact support.";
+      } else if (error.code === 'auth/api-key-not-valid') {
+        errorMessage = "The API key for Firebase is invalid. Please contact support.";
       }
       toast({
         variant: "destructive",
@@ -167,77 +167,203 @@ export default function SignInForm() {
     }
   }
 
+  async function handlePasswordReset() {
+    if (!resetEmail) {
+      toast({
+        variant: "destructive",
+        title: "Email Required",
+        description: "Please enter your email address to reset your password.",
+      });
+      return;
+    }
+    // Validate email format (simple check)
+    try {
+      resetPasswordSchema.parse({ resetEmail });
+    } catch (err) {
+       if (err instanceof z.ZodError) {
+        toast({
+          variant: "destructive",
+          title: "Invalid Email",
+          description: err.errors[0].message,
+        });
+      } else {
+         toast({
+          variant: "destructive",
+          title: "Invalid Email",
+          description: "Please enter a valid email address.",
+        });
+      }
+      return;
+    }
+
+
+    setIsPasswordResetLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, resetEmail);
+      toast({
+        title: "Password Reset Email Sent",
+        description: "If an account exists for this email, a reset link has been sent. Please check your inbox (and spam folder).",
+      });
+      setShowPasswordResetForm(false);
+      setResetEmail("");
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      let errorMessage = "Failed to send password reset email. Please try again.";
+      if (error.code === 'auth/user-not-found') {
+        // We typically don't want to confirm if an email exists for security reasons
+        // So, we show a generic message even for user-not-found
+         toast({
+          title: "Password Reset Email Sent",
+          description: "If an account exists for this email, a reset link has been sent. Please check your inbox (and spam folder).",
+        });
+         setShowPasswordResetForm(false);
+         setResetEmail("");
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = "The email address is not valid.";
+      }
+      toast({
+        variant: "destructive",
+        title: "Password Reset Failed",
+        description: errorMessage,
+      });
+    } finally {
+      setIsPasswordResetLoading(false);
+    }
+  }
+
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
-              <FormControl>
-                <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading || isGoogleLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Password</FormLabel>
-              <FormControl>
-                <Input type="password" placeholder="••••••••" {...field} disabled={isLoading || isGoogleLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
-          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <LogIn className="mr-2 h-4 w-4"/>}
-           Sign In
-        </Button>
-
-        <div className="relative my-3">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">
-              Or continue with
-            </span>
-          </div>
-        </div>
-
-        <Button variant="outline" type="button" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading || isGoogleLoading}>
-          {isGoogleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <GoogleIcon />}
-          Sign in with Google
-        </Button>
-
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" type="button" className="w-full" disabled={true || isLoading || isGoogleLoading}>
-                <Phone className="mr-2 h-4 w-4" />
-                Sign in with Phone (Coming Soon)
+        {!showPasswordResetForm ? (
+          <>
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading || isGoogleLoading} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <Input type="password" placeholder="••••••••" {...field} disabled={isLoading || isGoogleLoading} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="text-sm">
+              <Button
+                type="button"
+                variant="link"
+                className="px-0 font-normal"
+                onClick={() => {
+                  setShowPasswordResetForm(true);
+                  // Optionally prefill resetEmail with form.getValues("email") if it's valid
+                  const currentEmail = form.getValues("email");
+                  if (z.string().email().safeParse(currentEmail).success) {
+                    setResetEmail(currentEmail);
+                  } else {
+                    setResetEmail("");
+                  }
+                }}
+                disabled={isLoading || isGoogleLoading}
+              >
+                Forgot password?
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Phone number sign-in will be available soon!</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+            </div>
+            <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <LogIn className="mr-2 h-4 w-4"/>}
+              Sign In
+            </Button>
 
-        <p className="text-center text-sm text-muted-foreground">
-          Don't have an account?{" "}
-          <Button variant="link" asChild className="px-0">
-            <Link href="/auth/signup">Sign Up</Link>
-          </Button>
-        </p>
+            <div className="relative my-3">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">
+                  Or continue with
+                </span>
+              </div>
+            </div>
+
+            <Button variant="outline" type="button" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading || isGoogleLoading}>
+              {isGoogleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <GoogleIcon />}
+              Sign in with Google
+            </Button>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" type="button" className="w-full" disabled={true || isLoading || isGoogleLoading}>
+                    <Phone className="mr-2 h-4 w-4" />
+                    Sign in with Phone (Coming Soon)
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Phone number sign-in will be available soon!</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <p className="text-center text-sm text-muted-foreground">
+              Don't have an account?{" "}
+              <Button variant="link" asChild className="px-0">
+                <Link href="/auth/signup">Sign Up</Link>
+              </Button>
+            </p>
+          </>
+        ) : (
+          // Password Reset Form
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-medium text-foreground">Reset Password</h3>
+              <p className="text-sm text-muted-foreground">Enter your email address and we'll send you a link to reset your password.</p>
+            </div>
+             <FormItem>
+                <FormLabel htmlFor="resetEmail">Email Address</FormLabel>
+                <Input 
+                  id="resetEmail"
+                  type="email" 
+                  placeholder="you@example.com" 
+                  value={resetEmail}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setResetEmail(e.target.value)} 
+                  disabled={isPasswordResetLoading} 
+                />
+                {/* Minimal validation feedback for reset email, schema used in handler */}
+            </FormItem>
+            <Button type="button" onClick={handlePasswordReset} className="w-full" disabled={isPasswordResetLoading}>
+              {isPasswordResetLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MailQuestion className="mr-2 h-4 w-4"/>}
+              Send Reset Link
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                setShowPasswordResetForm(false);
+                setResetEmail("");
+              }}
+              disabled={isPasswordResetLoading}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
       </form>
     </Form>
   );
 }
+
