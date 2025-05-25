@@ -386,7 +386,12 @@ export default function DashboardPage() {
   // PROVIDER DASHBOARD
   if (role === 'provider') {
     const recentRequests = serviceRequests.filter(
-      req => req.providerId === user?.uid && (req.status === "pending_provider_action" || req.status === "pending_admin_fee" || req.status === "awaiting_admin_confirmation" || req.status === "admin_fee_payment_rejected")
+      req => req.providerId === user?.uid && 
+             (req.status === "pending_provider_action" || 
+              req.status === "pending_admin_fee" || 
+              req.status === "awaiting_admin_confirmation" || 
+              req.status === "admin_fee_payment_rejected" ||
+              req.status === "accepted_by_provider") // Also show accepted so they can see contact details
     ).slice(0, 5); 
 
     const workHistory = serviceRequests.filter(
@@ -418,7 +423,8 @@ export default function DashboardPage() {
                         req.status === "pending_provider_action" ? "default" :
                         req.status === "pending_admin_fee" ? "secondary" :
                         req.status === "awaiting_admin_confirmation" ? "outline" : 
-                        req.status === "admin_fee_payment_rejected" ? "destructive" : "default"
+                        req.status === "admin_fee_payment_rejected" ? "destructive" : 
+                        req.status === "accepted_by_provider" ? "default" : "default" // 'default' for accepted
                        } className="capitalize text-xs px-2 py-0.5">
                         {req.status.replace(/_/g, ' ')}
                        </Badge>
@@ -441,10 +447,10 @@ export default function DashboardPage() {
                         </Alert>
                     )}
                     {req.status === "accepted_by_provider" && (
-                       <Alert variant="default" className="mt-3 p-3 rounded-md bg-green-50 border-green-300">
-                          <CheckCircle className="h-4 w-4 text-green-600"/>
-                          <AlertTitle className="font-semibold text-green-700">Client Contact Details Unlocked</AlertTitle>
-                          <AlertDescription className="text-green-600 text-xs">
+                       <Alert variant="default" className="mt-3 p-3 rounded-md bg-green-50 border-green-300 dark:bg-green-900/30 dark:border-green-700">
+                          <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400"/>
+                          <AlertTitle className="font-semibold text-green-700 dark:text-green-300">Client Contact Details Unlocked</AlertTitle>
+                          <AlertDescription className="text-green-600 dark:text-green-400 text-xs">
                             Name: {req.clientName} <br/>
                             Phone: {req.clientPhone} <br/>
                             Address: {req.clientAddress}
@@ -475,8 +481,8 @@ export default function DashboardPage() {
                       </Button>
                     )}
                     {req.status === "awaiting_admin_confirmation" && (
-                       <div className="text-sm text-muted-foreground flex items-center p-2 bg-amber-50 border border-amber-200 rounded-md">
-                         <Hourglass className="mr-2 h-4 w-4 animate-pulse text-amber-600" /> Waiting for admin to confirm fee payment...
+                       <div className="text-sm text-muted-foreground flex items-center p-2 bg-amber-50 border border-amber-200 dark:bg-amber-900/30 dark:border-amber-700 rounded-md">
+                         <Hourglass className="mr-2 h-4 w-4 animate-pulse text-amber-600 dark:text-amber-400" /> Waiting for admin to confirm fee payment...
                        </div>
                     )}
                   </CardFooter>
@@ -629,3 +635,4 @@ export default function DashboardPage() {
 // animation: {
 //   'spin_slow': 'spin 3s linear infinite',
 // }
+

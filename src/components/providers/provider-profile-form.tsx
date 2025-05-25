@@ -62,7 +62,7 @@ const providerProfileSchema = z.object({
   address: z.string().min(5, { message: "Address must be at least 5 characters." }),
   phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }),
   email: z.string().email({ message: "Invalid email address." }),
-  servicesOfferedDescription: z.string().optional(),
+  servicesOfferedDescription: z.string().optional(), // Made optional
   rateType: z.custom<RateType>((val) => rateTypeOptions.map(rt => rt.value).includes(val as RateType), {
     message: "Please select a valid rate type.",
   }),
@@ -87,13 +87,13 @@ const providerProfileSchema = z.object({
 .refine(data => {
   const startTimeProvided = !!data.startTime;
   const endTimeProvided = !!data.endTime;
-  if (startTimeProvided && !endTimeProvided) return false; // If start is given, end must be given
-  if (!startTimeProvided && endTimeProvided) return false; // If end is given, start must be given
+  if (startTimeProvided && !endTimeProvided) return false; 
+  if (!startTimeProvided && endTimeProvided) return false; 
 
   if (startTimeProvided && endTimeProvided && data.startTime && data.endTime) {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
-    if (endH < startH || (endH === startH && endM <= startM)) return false; // End must be after start
+    if (endH < startH || (endH === startH && endM <= startM)) return false; 
   }
   return true;
 }, {
@@ -118,7 +118,7 @@ const providerProfileSchema = z.object({
   return true;
 }, {
   message: "Minimum and Maximum amounts are required and must be positive for 'Varies' rate type.",
-  path: ["rateMinAmount"],
+  path: ["rateMinAmount"], 
 })
 .refine(data => {
   if (data.rateType === "varies" && data.rateMinAmount && data.rateMaxAmount) {
@@ -171,27 +171,25 @@ function formatCurrentValuesForDialog(values: ProviderProfileFormValues, fieldLa
         const isOptionalRateAmount = (key === 'rateAmount' && !["per-hour", "per-job", "fixed-project"].includes(values.rateType));
         const isOptionalMinMax = ((key === 'rateMinAmount' || key === 'rateMaxAmount') && values.rateType !== 'varies');
         const isOptionalOtherDesc = (key === 'otherCategoryDescription' && values.category !== 'other');
-        const isOptionalRateDetails = (key === 'rateDetails' && values.rateType !== 'free-consultation');
+        const isOptionalRateDetails = (key === 'rateDetails' && values.rateType !== 'free-consultation' && !(values.rateType === 'varies' && values.rateDetails && values.rateDetails.trim().length > 0));
 
 
         if (value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0)) {
-            if (key === 'servicesOfferedDescription' ||
-                key === 'otherCategoryDescription' ||
-                key === 'rateAmount' ||
-                key === 'rateMinAmount' ||
-                key === 'rateMaxAmount' ||
-                key === 'rateDetails' ||
-                key === 'startTime' ||
-                key === 'endTime' ||
-                key === 'availabilityNotes')
+            if (key === 'servicesOfferedDescription' || // Always optional from user input POV
+                key === 'availabilityNotes' || // Always optional
+                key === 'startTime' || // Optional
+                key === 'endTime' // Optional
+              ) 
             {
-                 if (isOptionalOtherDesc && values.category !== 'other') { /* omit */ }
-                 else if (isOptionalRateAmount && !["per-hour", "per-job", "fixed-project"].includes(values.rateType)) { /* omit */ }
-                 else if (isOptionalMinMax && values.rateType !== 'varies') { /* omit */ }
-                 else if (isOptionalRateDetails && values.rateType !== 'free-consultation' && !(values.rateType === 'varies' && value)) { /* omit for varies if no detail*/ }
-                 else {
-                     summary.push(`${label}: Not set`);
-                 }
+                 summary.push(`${label}: Not set`);
+            } else if (isOptionalOtherDesc) { /* omit if not 'other' */ }
+            else if (isOptionalRateAmount) { /* omit if not required rate type */ }
+            else if (isOptionalMinMax) { /* omit if not 'varies' */ }
+            else if (isOptionalRateDetails) { /* omit if not 'free-consultation' or not 'varies' with actual details */ }
+            else {
+                // For other fields that might be optional but relevant to show as "Not set" if truly empty,
+                // or if they are required and this is for display before validation (though Zod handles required)
+                // summary.push(`${label}: Not set`); // Or handle as error if required
             }
         } else if (Array.isArray(value)) {
             summary.push(`${label}: ${value.join(', ') || 'None'}`);
@@ -209,7 +207,7 @@ const fieldDisplayLabels: Record<string, string> = {
     address: 'Address / Service Area',
     phone: 'Phone Number',
     email: 'Email Address',
-    servicesOfferedDescription: 'Specific Services Offered (comma-separated)',
+    servicesOfferedDescription: 'Specific Services Offered',
     rateType: 'Rate Structure',
     rateAmount: 'Rate Amount (NPR)',
     rateMinAmount: 'Minimum Rate Amount (NPR)',
@@ -242,7 +240,7 @@ export default function ProviderProfileForm() {
       phone: "",
       email: "",
       servicesOfferedDescription: "",
-      rateType: "varies",
+      rateType: "varies", 
       rateAmount: undefined,
       rateMinAmount: undefined,
       rateMaxAmount: undefined,
@@ -282,7 +280,7 @@ export default function ProviderProfileForm() {
       });
     } else {
       setIsLoadingData(false);
-      router.push('/auth/signin'); // Redirect if not logged in
+      // router.push('/auth/signin'); // Re-evaluate if this is needed or if form should be disabled
     }
   }, [user, form, toast, router]);
 
@@ -300,15 +298,23 @@ export default function ProviderProfileForm() {
       ? values.servicesOfferedDescription.split(',').map(s => s.trim()).filter(s => s.length > 0)
       : [];
 
-    const ratesData: ServiceProviderRates = {
+    const ratesDataForSubmission: ServiceProviderRates = {
         type: values.rateType,
-        amount: (values.rateType === "per-hour" || values.rateType === "per-job" || values.rateType === "fixed-project") ? values.rateAmount : null,
-        minAmount: values.rateType === "varies" ? values.rateMinAmount : null,
-        maxAmount: values.rateType === "varies" ? values.rateMaxAmount : null,
-        details: values.rateDetails || null,
+        amount: null,
+        minAmount: null,
+        maxAmount: null,
+        details: values.rateDetails?.trim() || null,
     };
 
-    const submissionData: any = { // Using any temporarily to build object conditionally
+    if (values.rateType === "per-hour" || values.rateType === "per-job" || values.rateType === "fixed-project") {
+        ratesDataForSubmission.amount = values.rateAmount ?? null;
+    } else if (values.rateType === "varies") {
+        ratesDataForSubmission.minAmount = values.rateMinAmount ?? null;
+        ratesDataForSubmission.maxAmount = values.rateMaxAmount ?? null;
+    }
+    // For 'free-consultation', details are handled by the main assignment. No specific amount fields.
+
+    const submissionData: any = { 
       userId: user.uid,
       name: values.name,
       category: values.category,
@@ -320,28 +326,18 @@ export default function ProviderProfileForm() {
       servicesOffered: servicesArray,
       availability: {
           days: values.availableDays,
-          startTime: values.startTime || null,
-          endTime: values.endTime || null,
-          notes: values.availabilityNotes || null,
+          startTime: values.startTime?.trim() || null,
+          endTime: values.endTime?.trim() || null,
+          notes: values.availabilityNotes?.trim() || null,
       },
-      rates: {
-        type: values.rateType,
-        details: values.rateDetails || null,
-      },
+      rates: ratesDataForSubmission,
       updatedAt: new Date().toISOString(),
     };
 
     if (values.category === 'other') {
-        submissionData.otherCategoryDescription = values.otherCategoryDescription || "";
+        submissionData.otherCategoryDescription = values.otherCategoryDescription?.trim() || "";
     }
-
-    if (ratesData.type === "per-hour" || ratesData.type === "per-job" || ratesData.type === "fixed-project") {
-        submissionData.rates.amount = values.rateAmount;
-    } else if (ratesData.type === "varies") {
-        submissionData.rates.minAmount = values.rateMinAmount;
-        submissionData.rates.maxAmount = values.rateMaxAmount;
-    }
-
+    // No need to add otherCategoryDescription if category is not 'other', preventing undefined
 
     try {
       await set(ref(database, `providerProfiles/${user.uid}`), submissionData);
@@ -350,7 +346,7 @@ export default function ProviderProfileForm() {
         description: "Your service provider profile has been successfully saved.",
       });
       setHasExistingProfile(true);
-      router.push('/home-provider');
+      router.push('/home-provider'); 
     } catch (error: any) {
       console.error("Error saving provider profile:", error);
       toast({ variant: "destructive", title: "Save Failed", description: error.message || "Could not save your profile. Please try again." });
@@ -388,16 +384,15 @@ export default function ProviderProfileForm() {
 
                 const cityLevel = addr.city || addr.town || addr.village || addr.city_district;
                 if (cityLevel && !parts.some(p => p.toLowerCase() === cityLevel.toLowerCase())) parts.push(cityLevel);
-
+                
                 const country = addr.country;
-                 if (country && parts.length > 0 && !parts.some(p => p.toLowerCase() === country.toLowerCase())) parts.push(country);
-
+                if (country && parts.length > 0 && !parts.some(p => p.toLowerCase() === country.toLowerCase())) parts.push(country);
 
                 const uniqueParts = parts.filter((part, index, self) => part && self.findIndex(p => p.toLowerCase().trim() === part.toLowerCase().trim()) === index);
 
-                if (uniqueParts.length > 1) {
+                if (uniqueParts.length > 1) { // Check if we have at least two useful parts
                     displayAddress = uniqueParts.join(', ');
-                } else if (data.display_name) {
+                } else if (data.display_name) { // Fallback to full display_name if parts are too few
                     displayAddress = data.display_name;
                 }
             } else if (data.display_name) {
@@ -661,7 +656,7 @@ export default function ProviderProfileForm() {
                 name="rateMinAmount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Minimum Amount (NPR)</FormLabel>
+                    <FormLabel>Minimum Rate Amount (NPR)</FormLabel>
                     <FormControl>
                       <Input type="number" placeholder="e.g., 500" {...field} value={field.value ?? ""} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="any" />
                     </FormControl>
@@ -674,7 +669,7 @@ export default function ProviderProfileForm() {
                 name="rateMaxAmount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Maximum Amount (NPR)</FormLabel>
+                    <FormLabel>Maximum Rate Amount (NPR)</FormLabel>
                     <FormControl>
                       <Input type="number" placeholder="e.g., 1500" {...field} value={field.value ?? ""} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="any" />
                     </FormControl>
@@ -694,7 +689,7 @@ export default function ProviderProfileForm() {
                       {selectedRateType === "free-consultation"
                           ? "Describe Free Consultation (Required)"
                           : selectedRateType === "varies"
-                          ? "Optional: Explanation for varied rates (e.g., factors affecting price)"
+                          ? "Optional: Explanation for Varied Rates (e.g., factors affecting price)"
                           : "Optional: Additional Rate Notes"}
                   </FormLabel>
                   <FormControl>
@@ -810,7 +805,7 @@ export default function ProviderProfileForm() {
             )}
           />
 
-          <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting || isLoadingData}>
+          <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting || isLoadingData || !user}>
             {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : (hasExistingProfile ? <Edit className="mr-2 h-5 w-5" /> : <Save className="mr-2 h-5 w-5" />)}
             {hasExistingProfile ? "Update Profile" : "Save Profile"}
           </Button>
@@ -821,12 +816,12 @@ export default function ProviderProfileForm() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Profile {hasExistingProfile ? "Update" : "Creation"}</AlertDialogTitle>
-             {/* Fix: Ensure ul is not a descendant of AlertDialogDescription which renders as <p> */}
             <AlertDialogDescription>
               Please review your information before saving:
             </AlertDialogDescription>
-            <div className="max-h-60 overflow-y-auto text-sm">
-                <ul className="mt-2 space-y-1 text-foreground list-disc list-inside">
+             {/* Ensure ul is not a direct child of AlertDialogDescription if it renders as p */}
+            <div className="max-h-60 overflow-y-auto text-sm my-4 border p-3 rounded-md">
+                <ul className="space-y-1 text-foreground list-disc list-inside">
                     {confirmationSummary.map((item, index) => (
                     <li key={index}>{item}</li>
                     ))}
@@ -845,3 +840,4 @@ export default function ProviderProfileForm() {
     </>
   );
 }
+
