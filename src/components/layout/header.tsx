@@ -35,10 +35,13 @@ export default function Header() {
   
   let dynamicNavLinks = [...baseNavLinks];
   if (role === 'provider') {
-    // Filter out "Find Providers" for providers
-    dynamicNavLinks = dynamicNavLinks.filter(link => link.href !== "/providers");
-  } else {
-    // Keep or add "Request Service" for non-providers
+    dynamicNavLinks = dynamicNavLinks.filter(link => link.href !== "/providers" && link.href !== "/request-service");
+  } else if (role === 'admin') {
+    // Admin might see all links, or a specific set. For now, let's assume they see seeker links.
+    if (!dynamicNavLinks.some(link => link.href === "/request-service")) {
+      dynamicNavLinks.push({ href: "/request-service", label: "Request Service" });
+    }
+  } else { // Seeker or unauthenticated
     if (!dynamicNavLinks.some(link => link.href === "/request-service")) {
       dynamicNavLinks.push({ href: "/request-service", label: "Request Service" });
     }
@@ -47,31 +50,35 @@ export default function Header() {
   const providerSpecificLinks = role === 'provider' ? [{ href: "/provider-setup", label: "My Provider Profile" }] : [];
   const dashboardLink = user ? [{ href: "/dashboard", label: "Dashboard" }] : [];
 
-  const allNavLinks = [...dynamicNavLinks, ...providerSpecificLinks];
+  // Consolidate all links that appear in the main nav section
+  const mainDesktopNavLinks = [...dynamicNavLinks, ...providerSpecificLinks];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 max-w-screen-2xl items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <Sparkles className="h-7 w-7 text-primary" />
-          <span className="text-xl font-bold text-foreground tracking-tight">SewaSathi</span>
-        </Link>
-
-        <nav className="hidden md:flex items-center gap-1 lg:gap-2">
-          {allNavLinks.map((link) => (
-            <Button key={link.href} variant="ghost" asChild>
-              <Link href={link.href}>{link.label}</Link>
-            </Button>
-          ))}
-           {user && dashboardLink.map(link => (
-             <Button key={link.href} variant="ghost" asChild>
-                <Link href={link.href} className="flex items-center">
-                  <LayoutDashboard className="mr-2 h-4 w-4" /> {link.label}
-                </Link>
+        {/* Left section: Logo and main navigation links */}
+        <div className="flex items-center">
+          <Link href="/" className="flex items-center gap-2 mr-6"> {/* Logo */}
+            <Sparkles className="h-7 w-7 text-primary" />
+            <span className="text-xl font-bold text-foreground tracking-tight">SewaSathi</span>
+          </Link>
+          <nav className="hidden md:flex items-center gap-1 lg:gap-2"> {/* Desktop Main Nav */}
+            {mainDesktopNavLinks.map((link) => (
+              <Button key={link.href} variant="ghost" asChild>
+                <Link href={link.href}>{link.label}</Link>
               </Button>
-           ))}
-        </nav>
+            ))}
+            {user && dashboardLink.map(link => (
+              <Button key={link.href} variant="ghost" asChild>
+                  <Link href={link.href} className="flex items-center">
+                    <LayoutDashboard className="mr-2 h-4 w-4" /> {link.label}
+                  </Link>
+                </Button>
+            ))}
+          </nav>
+        </div>
         
+        {/* Right section: Auth info and buttons for desktop */}
         <div className="hidden md:flex items-center gap-2">
          {loading ? null : user ? (
             <>
@@ -92,6 +99,7 @@ export default function Header() {
           )}
         </div>
 
+        {/* Mobile Menu Trigger (this will be the item pushed to the far right by justify-between on mobile) */}
         <div className="md:hidden">
           <Sheet>
             <SheetTrigger asChild>
@@ -116,7 +124,8 @@ export default function Header() {
               </SheetHeader>
               <Separator className="mb-4"/>
               <div className="flex flex-col gap-2">
-                {allNavLinks.map((link) => (
+                {/* Links for mobile menu */}
+                {mainDesktopNavLinks.map((link) => (
                   <Button key={link.href} variant="ghost" asChild className="justify-start text-base py-3 h-auto">
                     <Link href={link.href}>{link.label}</Link>
                   </Button>
