@@ -6,17 +6,82 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/auth-context";
-import { mockServiceRequests } from "@/lib/mock-data"; // Using mock data for now
-import type { ServiceRequest, ServiceRequestStatus } from "@/lib/types";
-import { AlertCircle, CheckCircle, Clock, DollarSign, Eye, MessageSquare, XCircle, Info, LayoutDashboard, Hourglass, UserCog, UserCheck } from "lucide-react";
+import { mockServiceRequests, mockServiceProviders } from "@/lib/mock-data"; 
+import type { ServiceRequest, ServiceRequestStatus, ServiceProvider, ServiceProviderAvailability, ServiceProviderRates } from "@/lib/types";
+import { AlertCircle, CheckCircle, Clock, DollarSign, Eye, MessageSquare, XCircle, Info, LayoutDashboard, Hourglass, UserCog, UserCheck, Briefcase, FileText, Users, ListChecks, User as UserIcon } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
-// import { database } from "@/lib/firebase"; // Uncomment when ready for DB operations
-// import { ref, update } from "firebase/database"; // Uncomment when ready for DB operations
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+// Helper function to find provider name from mock data
+const getProviderName = (providerId: string | null | undefined, providers: ServiceProvider[]): string => {
+  if (!providerId) return "N/A";
+  const provider = providers.find(p => p.id === providerId);
+  return provider ? provider.name : "Unknown Provider";
+};
+
+// Helper function to format availability for Admin Dashboard
+const formatAvailabilityForAdmin = (availability?: ServiceProviderAvailability): string => {
+  if (!availability) return "Not specified";
+  let parts: string[] = [];
+  if (availability.days && availability.days.length > 0) {
+    parts.push(`Days: ${availability.days.join(', ')}`);
+  }
+  if (availability.startTime && availability.endTime) {
+    parts.push(`Hours: ${availability.startTime} - ${availability.endTime}`);
+  } else if (availability.startTime) {
+    parts.push(`Starts: ${availability.startTime}`);
+  } else if (availability.endTime) {
+    parts.push(`Ends by: ${availability.endTime}`);
+  }
+  
+  let fullString = parts.join(' | ');
+  if (!fullString && availability.notes) return `Notes: ${availability.notes}`;
+  if (fullString && availability.notes) fullString += ` (Notes: ${availability.notes})`;
+  return fullString || "Availability not fully specified.";
+};
+
+// Helper function to format rates for Admin Dashboard
+const formatRatesForAdmin = (rates: ServiceProviderRates): React.ReactNode => {
+  const { type, amount, minAmount, maxAmount, details } = rates;
+  let rateString = "";
+
+  switch (type) {
+    case "per-hour":
+      rateString = amount ? `Rs. ${amount} per hour` : "Hourly rate (details not specified)";
+      break;
+    case "per-job":
+      rateString = amount ? `Approx. Rs. ${amount} per job` : "Per job basis (details not specified)";
+      break;
+    case "fixed-project":
+      rateString = amount ? `Rs. ${amount} (fixed project price)` : "Fixed project price (details not specified)";
+      break;
+    case "varies":
+      if (minAmount && maxAmount) rateString = `Rs. ${minAmount} - Rs. ${maxAmount}`;
+      else rateString = "Rates vary / Upon Consultation";
+      break;
+    case "free-consultation":
+      rateString = "Offers Free Consultation";
+      break;
+    default:
+      rateString = "Please contact for rate information.";
+  }
+
+  return (
+    <>
+      <p className="font-semibold">{rateString}</p>
+      {details && (
+        <p className="text-xs text-muted-foreground mt-1"><em>Note: {details}</em></p>
+      )}
+    </>
+  );
+};
 
 
 export default function DashboardPage() {
@@ -27,19 +92,8 @@ export default function DashboardPage() {
   const [estimatedCharge, setEstimatedCharge] = useState<number | string>("");
   const [showAdminFeeDialog, setShowAdminFeeDialog] = useState(false);
   const [currentAdminFee, setCurrentAdminFee] = useState(0);
-
-
-  // Simulate fetching real data if user.uid is available
-  // useEffect(() => {
-  //   if (role === 'provider' && user?.uid) {
-  //     // TODO: Replace with actual Firebase call to fetch requests assigned to this provider
-  //     // const assignedRequests = mockServiceRequests.filter(req => req.providerId === user.uid);
-  //     // setServiceRequests(assignedRequests);
-  //     setServiceRequests(mockServiceRequests); // For demo, show all requests to any provider
-  //   } else {
-  //     setServiceRequests(mockServiceRequests); // Or relevant data for seeker/admin
-  //   }
-  // }, [user, role]);
+  const [adminRejectionReasonInput, setAdminRejectionReasonInput] = useState("");
+  const [requestToReject, setRequestToReject] = useState<ServiceRequest | null>(null);
 
 
   const updateRequestStatusLocally = (requestId: string, newStatus: ServiceRequestStatus, updates?: Partial<ServiceRequest>) => {
@@ -53,13 +107,12 @@ export default function DashboardPage() {
     // update(requestRef, { status: newStatus, ...updates }).catch(error => {
     //   toast({ variant: "destructive", title: "Database Error", description: "Failed to update request status in DB."});
     //   console.error("DB update error: ", error);
-    //   // Optionally revert local state change if DB update fails
     // });
   };
 
   const handleOpenAcceptDialog = (request: ServiceRequest) => {
     setSelectedRequestForAccept(request);
-    setEstimatedCharge(""); // Reset previous charge
+    setEstimatedCharge(""); 
   };
 
   const handleEstimateSubmit = () => {
@@ -80,14 +133,30 @@ export default function DashboardPage() {
     if (!selectedRequestForAccept) return;
     updateRequestStatusLocally(selectedRequestForAccept.id, "awaiting_admin_confirmation", { adminFeePaid: true });
     setShowAdminFeeDialog(false);
-    setSelectedRequestForAccept(null); // Close the initial dialog chain
+    setSelectedRequestForAccept(null); 
     toast({ title: "Payment Submitted", description: "Admin fee payment noted. Waiting for admin confirmation." });
   };
-
-  const handleSimulateAdminConfirmation = (requestId: string) => {
+  
+  const handleAdminApprovePayment = (requestId: string) => {
     updateRequestStatusLocally(requestId, "accepted_by_provider");
-    toast({ title: "Admin Confirmed!", description: "Request accepted. Client details are now visible." });
+    toast({ title: "Payment Approved!", description: "Request is now active. Client details shared with provider."});
   };
+
+  const handleAdminOpenRejectDialog = (request: ServiceRequest) => {
+    setRequestToReject(request);
+    setAdminRejectionReasonInput("");
+  };
+
+  const handleAdminSubmitRejection = () => {
+    if (!requestToReject || !adminRejectionReasonInput.trim()) {
+      toast({ variant: "destructive", title: "Reason Required", description: "Please provide a reason for rejection."});
+      return;
+    }
+    updateRequestStatusLocally(requestToReject.id, "admin_fee_payment_rejected", { adminRejectionReason: adminRejectionReasonInput.trim() });
+    toast({ title: "Payment Rejected", description: "Provider has been notified."});
+    setRequestToReject(null);
+  };
+
 
   const handleRejectOffer = (requestId: string) => {
     updateRequestStatusLocally(requestId, "rejected_by_provider");
@@ -101,6 +170,8 @@ export default function DashboardPage() {
 
   // ADMIN DASHBOARD
   if (role === 'admin') {
+    const pendingAdminConfirmations = serviceRequests.filter(req => req.status === "awaiting_admin_confirmation");
+
     return (
       <div className="space-y-8">
         <Card>
@@ -110,18 +181,181 @@ export default function DashboardPage() {
               Admin Dashboard
             </CardTitle>
             <CardDescription>
-              Welcome, Admin! Manage platform activities here. (Functionality to be built)
+              Manage platform activities, service requests, and provider payments.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
-              Admin-specific features like user management, request overview, payment confirmations, etc., will be available here.
-            </p>
-            <div className="mt-6 p-8 border-2 border-dashed border-muted-foreground/30 rounded-lg text-center">
-              <p className="text-lg font-semibold text-muted-foreground">Admin Panel Under Construction</p>
-            </div>
+            <Tabs defaultValue="pending-confirmations" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="pending-confirmations">Pending Confirmations</TabsTrigger>
+                <TabsTrigger value="all-requests">All Service Requests</TabsTrigger>
+                <TabsTrigger value="providers">Service Providers</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="pending-confirmations" className="mt-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Admin Fee Payment Confirmations</CardTitle>
+                    <CardDescription>Review and confirm provider admin fee payments.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {pendingAdminConfirmations.length > 0 ? (
+                      pendingAdminConfirmations.map((req) => (
+                        <Card key={req.id} className="shadow-md">
+                          <CardHeader>
+                            <CardTitle className="text-lg">Request ID: {req.id.substring(0, 8)}...</CardTitle>
+                            <CardDescription>
+                              Provider: {getProviderName(req.providerId, mockServiceProviders)}
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="text-sm space-y-1">
+                            <p><span className="font-semibold">Client Need:</span> {req.clientServiceNeeded.substring(0, 100)}...</p>
+                            <p><span className="font-semibold">Provider Estimate:</span> Rs. {req.estimatedJobValueByProvider?.toFixed(2)}</p>
+                            <p><span className="font-semibold">Admin Fee (8%):</span> Rs. {req.adminFeeCalculated?.toFixed(2)}</p>
+                            <p><span className="font-semibold">Status:</span> <Badge variant="secondary" className="capitalize">{req.status.replace(/_/g, ' ')}</Badge></p>
+                          </CardContent>
+                          <CardFooter className="flex justify-end gap-2">
+                            <Button variant="default" size="sm" onClick={() => handleAdminApprovePayment(req.id)}>
+                              <CheckCircle className="mr-2 h-4 w-4" /> Approve Payment
+                            </Button>
+                            <Button variant="destructive" size="sm" onClick={() => handleAdminOpenRejectDialog(req)}>
+                              <XCircle className="mr-2 h-4 w-4" /> Reject Payment
+                            </Button>
+                          </CardFooter>
+                        </Card>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground">No pending payment confirmations.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="all-requests" className="mt-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center">
+                        <ListChecks className="mr-2 h-5 w-5 text-primary"/> All Service Requests
+                    </CardTitle>
+                    <CardDescription>Overview of all service requests on the platform.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {serviceRequests.length > 0 ? (
+                      serviceRequests.map((req) => (
+                        <Card key={req.id} className="shadow-sm border">
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-md flex justify-between items-center">
+                              <span>Client: {req.clientName}</span>
+                              <Badge variant={
+                                req.status === "pending_provider_action" || req.status === "awaiting_admin_confirmation" || req.status === "pending_admin_fee" ? "secondary" :
+                                req.status === "accepted_by_provider" ? "default" :
+                                req.status === "rejected_by_provider" || req.status === "admin_fee_payment_rejected" ? "destructive" :
+                                req.status === "job_completed" || req.status === "request_completed" ? "outline" : "default"
+                              } className="capitalize text-xs">
+                                {req.status.replace(/_/g, ' ')}
+                              </Badge>
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                              Requested: {new Date(req.requestedAt).toLocaleString()} | Request ID: {req.id.substring(0,8)}...
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="text-sm space-y-1">
+                            <p><strong className="font-medium">Service Needed:</strong> {req.clientServiceNeeded}</p>
+                            <p><strong className="font-medium">Client Contact:</strong> {req.clientPhone} | <strong className="font-medium">Address:</strong> {req.clientAddress}</p>
+                            <Separator className="my-2"/>
+                            <p><strong className="font-medium">Assigned Provider:</strong> {getProviderName(req.providerId, mockServiceProviders)}</p>
+                            {req.estimatedJobValueByProvider != null && <p><strong className="font-medium">Provider Estimate:</strong> Rs. {req.estimatedJobValueByProvider.toFixed(2)}</p>}
+                            {req.adminFeeCalculated != null && <p><strong className="font-medium">Admin Fee:</strong> Rs. {req.adminFeeCalculated.toFixed(2)} (Paid: {req.adminFeePaid ? <CheckCircle className="inline h-4 w-4 text-green-600" /> : <XCircle className="inline h-4 w-4 text-red-600" />})</p>}
+                            {req.status === 'admin_fee_payment_rejected' && req.adminRejectionReason && (
+                              <Alert variant="destructive" className="mt-2 text-xs p-2">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertTitle className="text-sm">Payment Rejected by Admin</AlertTitle>
+                                <AlertDescription>Reason: {req.adminRejectionReason}</AlertDescription>
+                              </Alert>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground">No service requests found.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="providers" className="mt-6">
+                <Card>
+                  <CardHeader>
+                     <CardTitle className="flex items-center">
+                        <Users className="mr-2 h-5 w-5 text-primary"/>All Service Providers
+                    </CardTitle>
+                    <CardDescription>Overview of registered service providers.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {mockServiceProviders.length > 0 ? (
+                      mockServiceProviders.map((provider) => (
+                        <Card key={provider.id} className="shadow-sm border">
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-lg flex items-center">
+                              <UserIcon className="mr-2 h-5 w-5 text-primary" /> {provider.name}
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                              Category: {provider.category}{provider.category === 'other' && provider.otherCategoryDescription ? ` (${provider.otherCategoryDescription})` : ''} | ID: {provider.id.substring(0,15)}...
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="text-sm space-y-1">
+                            <p><strong className="font-medium">Contact:</strong> {provider.contactInfo.phone} / {provider.contactInfo.email}</p>
+                            <p><strong className="font-medium">Address:</strong> {provider.address}</p>
+                            {provider.servicesOffered && provider.servicesOffered.length > 0 && (
+                              <p><strong className="font-medium">Services:</strong> {provider.servicesOffered.join(", ")}</p>
+                            )}
+                             <p><strong className="font-medium">Availability:</strong> {formatAvailabilityForAdmin(provider.availability)}</p>
+                            <div><strong className="font-medium">Rates:</strong> {formatRatesForAdmin(provider.rates)}</div>
+                            <p><strong className="font-medium">Rating:</strong> {provider.overallRating.toFixed(1)} ({provider.reviews.length} reviews)</p>
+                          </CardContent>
+                          <CardFooter>
+                            <Button variant="outline" size="sm" asChild>
+                              <Link href={`/providers/${provider.id}`}>View Full Public Profile</Link>
+                            </Button>
+                          </CardFooter>
+                        </Card>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground">No service providers found.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
+
+        {/* Dialog for Admin to reject payment */}
+        <Dialog open={!!requestToReject} onOpenChange={(isOpen) => { if (!isOpen) setRequestToReject(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reject Admin Fee Payment</DialogTitle>
+              <DialogDescription>
+                Provide a reason for rejecting the payment for request ID: {requestToReject?.id.substring(0,8)}...
+                (Provider: {getProviderName(requestToReject?.providerId, mockServiceProviders)})
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <Label htmlFor="rejectionReason">Rejection Reason</Label>
+              <Textarea
+                id="rejectionReason"
+                value={adminRejectionReasonInput}
+                onChange={(e) => setAdminRejectionReasonInput(e.target.value)}
+                placeholder="e.g., Payment not reflected, screenshot unclear, etc."
+              />
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <Button variant="destructive" onClick={handleAdminSubmitRejection}>Submit Rejection</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </div>
     );
   }
@@ -129,16 +363,12 @@ export default function DashboardPage() {
   // PROVIDER DASHBOARD
   if (role === 'provider') {
     const recentRequests = serviceRequests.filter(
-      req => req.status === "pending_provider_action" || req.status === "pending_admin_fee" || req.status === "awaiting_admin_confirmation"
-      // For demo, let's show requests that might be assigned to *any* mock provider
-      // If you have a logged-in provider with a specific UID, you'd filter by:
-      // && req.providerId === user?.uid 
-    ).slice(0, 3); // Show a few mock recent requests for demo
+      req => req.status === "pending_provider_action" || req.status === "pending_admin_fee" || req.status === "awaiting_admin_confirmation" || req.status === "admin_fee_payment_rejected"
+    ).slice(0, 5); 
 
     const workHistory = serviceRequests.filter(
       req => req.status === "job_completed" || req.status === "request_completed" ||  req.status === "rejected_by_provider"
-      // && req.providerId === user?.uid 
-    ).slice(0, 3); // Show a few mock history items for demo
+    ).slice(0, 5); 
 
     return (
       <div className="space-y-8">
@@ -152,7 +382,6 @@ export default function DashboardPage() {
           </CardHeader>
         </Card>
 
-        {/* Recent Service Requests */}
         <section>
           <h2 className="text-xl font-semibold mb-4 text-foreground/90">Recent Service Requests</h2>
           {recentRequests.length > 0 ? (
@@ -165,7 +394,8 @@ export default function DashboardPage() {
                        <Badge variant={
                         req.status === "pending_provider_action" ? "default" :
                         req.status === "pending_admin_fee" ? "secondary" :
-                        req.status === "awaiting_admin_confirmation" ? "outline" : "default"
+                        req.status === "awaiting_admin_confirmation" ? "outline" : 
+                        req.status === "admin_fee_payment_rejected" ? "destructive" : "default"
                        } className="capitalize">
                         {req.status.replace(/_/g, ' ')}
                        </Badge>
@@ -173,13 +403,20 @@ export default function DashboardPage() {
                     <CardDescription className="text-sm text-muted-foreground">
                       <Clock className="inline h-4 w-4 mr-1" /> Requested: {new Date(req.requestedAt).toLocaleString()} <br />
                       <Info className="inline h-4 w-4 mr-1" /> Category: {req.serviceCategory || "N/A"} <br/>
-                      Client Name (Initial): {req.clientName.split(' ')[0]}... {/* Show partial name initially */}
+                      Client Name (Initial): {req.clientName.split(' ')[0]}...
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm mb-1"><span className="font-semibold">Location:</span> {req.clientAddress}</p>
                     <p className="text-sm"><span className="font-semibold">Needs:</span> {req.clientServiceNeeded}</p>
                     
+                    {req.status === "admin_fee_payment_rejected" && req.adminRejectionReason && (
+                        <Alert variant="destructive" className="mt-3">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle>Admin Fee Rejection</AlertTitle>
+                            <AlertDescription>Reason: {req.adminRejectionReason}. Please contact admin or try payment again if applicable.</AlertDescription>
+                        </Alert>
+                    )}
                     {req.status === "accepted_by_provider" && (
                        <div className="mt-3 pt-3 border-t">
                           <h4 className="font-semibold text-md text-green-600">Client Contact Details:</h4>
@@ -202,7 +439,7 @@ export default function DashboardPage() {
                         </Button>
                       </>
                     )}
-                    {req.status === "pending_admin_fee" && (
+                    {(req.status === "pending_admin_fee" || req.status === "admin_fee_payment_rejected") && (
                       <Button variant="secondary" onClick={() => {
                         setSelectedRequestForAccept(req);
                         setCurrentAdminFee(req.adminFeeCalculated || 0);
@@ -212,9 +449,9 @@ export default function DashboardPage() {
                       </Button>
                     )}
                     {req.status === "awaiting_admin_confirmation" && (
-                       <Button variant="outline" onClick={() => handleSimulateAdminConfirmation(req.id)}>
-                         <UserCheck className="mr-2 h-4 w-4" /> Simulate Admin Confirmation
-                       </Button>
+                       <p className="text-sm text-muted-foreground flex items-center">
+                         <Hourglass className="mr-2 h-4 w-4 animate-pulse" /> Waiting for admin to confirm fee payment...
+                       </p>
                     )}
                   </CardFooter>
                 </Card>
@@ -227,7 +464,6 @@ export default function DashboardPage() {
 
         <Separator />
 
-        {/* Work History */}
         <section>
           <h2 className="text-xl font-semibold mb-4 text-foreground/90">Work History</h2>
           {workHistory.length > 0 ? (
@@ -242,11 +478,12 @@ export default function DashboardPage() {
                        </Badge>
                      </CardTitle>
                     <CardDescription className="text-xs text-muted-foreground">
-                      Client: {req.clientName} | Completed: {new Date(req.requestedAt).toLocaleDateString()} {/* Assuming requestedAt is completion for now */}
+                      Client: {req.clientName} | Completed: {new Date(req.requestedAt).toLocaleDateString()} 
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm">Details: {req.clientServiceNeeded}</p>
+                    {req.estimatedJobValueByProvider && <p className="text-sm">Value: Rs. {req.estimatedJobValueByProvider.toFixed(2)}</p>}
                   </CardContent>
                    <CardFooter className="flex justify-end">
                       <Button variant="ghost" size="sm">
@@ -261,7 +498,6 @@ export default function DashboardPage() {
           )}
         </section>
 
-        {/* Dialog for entering estimated charge */}
         <Dialog open={!!selectedRequestForAccept && !showAdminFeeDialog} onOpenChange={(isOpen) => {
             if (!isOpen) setSelectedRequestForAccept(null);
         }}>
@@ -295,7 +531,6 @@ export default function DashboardPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Dialog for paying admin fee */}
         <Dialog open={showAdminFeeDialog} onOpenChange={setShowAdminFeeDialog}>
             <DialogContent>
                 <DialogHeader>
@@ -307,7 +542,7 @@ export default function DashboardPage() {
                 </DialogHeader>
                 <div className="py-4 flex flex-col items-center space-y-3">
                      <Image
-                        src="/esewa_admin_qr.png" // Make sure this image is in your /public folder
+                        src="/esewa_admin_qr.png" 
                         alt="eSewa Admin QR Code"
                         width={200}
                         height={200}
