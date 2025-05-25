@@ -24,7 +24,11 @@ export default function Header() {
   const handleSignOut = async () => {
     try {
       await firebaseSignOut(auth); // Client-side sign out
-      await fetch('/api/auth/sessionLogout', { method: 'POST' }); // Server-side session clear
+      // Call the API route to clear the session cookie
+      const response = await fetch('/api/auth/sessionLogout', { method: 'POST' });
+      if (!response.ok) {
+        console.error("Failed to clear server session cookie");
+      }
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
       router.push("/"); 
     } catch (error) {
@@ -37,7 +41,7 @@ export default function Header() {
   if (role === 'provider') {
     dynamicNavLinks = dynamicNavLinks.filter(link => link.href !== "/providers" && link.href !== "/request-service");
   } else if (role === 'admin') {
-    // Admin might see all links, or a specific set. For now, let's assume they see seeker links.
+    // Admin might see all links, or a specific set.
     if (!dynamicNavLinks.some(link => link.href === "/request-service")) {
       dynamicNavLinks.push({ href: "/request-service", label: "Request Service" });
     }
@@ -45,6 +49,10 @@ export default function Header() {
     if (!dynamicNavLinks.some(link => link.href === "/request-service")) {
       dynamicNavLinks.push({ href: "/request-service", label: "Request Service" });
     }
+  }
+
+  if (role === 'provider') {
+    dynamicNavLinks = dynamicNavLinks.filter(link => link.href !== "/providers");
   }
   
   const providerSpecificLinks = role === 'provider' ? [{ href: "/provider-setup", label: "My Provider Profile" }] : [];
@@ -55,7 +63,7 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 max-w-screen-2xl items-center justify-between">
+      <div className="container flex h-16 max-w-screen-2xl items-center"> {/* Removed justify-between */}
         {/* Left section: Logo and main navigation links */}
         <div className="flex items-center">
           <Link href="/" className="flex items-center gap-2 mr-6"> {/* Logo */}
@@ -79,7 +87,7 @@ export default function Header() {
         </div>
         
         {/* Right section: Auth info and buttons for desktop */}
-        <div className="hidden md:flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2 ml-auto"> {/* Added ml-auto */}
          {loading ? null : user ? (
             <>
               <span className="text-sm text-muted-foreground hidden lg:inline">{user.email || user.displayName}</span>
@@ -99,8 +107,8 @@ export default function Header() {
           )}
         </div>
 
-        {/* Mobile Menu Trigger (this will be the item pushed to the far right by justify-between on mobile) */}
-        <div className="md:hidden">
+        {/* Mobile Menu Trigger */}
+        <div className="md:hidden ml-auto"> {/* Added ml-auto */}
           <Sheet>
             <SheetTrigger asChild>
               <Button variant="outline" size="icon">
