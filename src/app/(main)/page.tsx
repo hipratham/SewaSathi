@@ -1,3 +1,4 @@
+
 import ProviderSearchForm from "@/components/providers/provider-search-form";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import Image from "next/image";
@@ -35,6 +36,7 @@ export default function HomePage() {
               width={800} 
               height={600}
               className="rounded-lg shadow-lg object-cover aspect-[4/3]"
+              priority 
             />
         </div>
       </div>
