@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,12 +19,13 @@ import { Textarea } from "@/components/ui/textarea";
 import EsewaQrCode from "@/components/payments/esewa-qr";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { CheckCircle, Send, CreditCard, Gift, Loader2, Info } from "lucide-react";
+import { CheckCircle, Send, CreditCard, Gift, Loader2, Info, Phone } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
 
 const serviceRequestSchema = z.object({
   userName: z.string().min(2, { message: "Name is required." }),
+  userPhone: z.string().min(10, { message: "Your phone number is required (at least 10 digits)." }),
   location: z.string().min(3, { message: "Location is required." }),
   serviceNeeded: z.string().min(10, { message: "Please describe your needs (min. 10 characters)." }),
   tipAmount: z.coerce.number().nonnegative({message: "Tip amount cannot be negative."}).optional(),
@@ -43,6 +45,7 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
     resolver: zodResolver(serviceRequestSchema),
     defaultValues: {
       userName: "",
+      userPhone: "",
       location: "",
       serviceNeeded: "",
       tipAmount: 0,
@@ -54,12 +57,20 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
   async function onSubmit(values: z.infer<typeof serviceRequestSchema>) {
     setIsLoading(true);
     console.log("Service request submitted:", values, "for provider:", providerId);
+    
+    const requestTime = new Date().toLocaleString();
+    console.log(
+      `Simulating notification to provider ${providerId || 'N/A'}: ` +
+      `New service request from ${values.userName} (Phone: ${values.userPhone}). ` +
+      `Location: ${values.location}. Needs: ${values.serviceNeeded}. Time: ${requestTime}`
+    );
+
     await mockApiCall();
     setRequestStatus("payment");
     setIsLoading(false);
     toast({
-      title: "Details Submitted",
-      description: "Please complete the Rs. 100 initial service fee payment to proceed.",
+      title: "Details Submitted (Simulation)",
+      description: `Provider would be notified with your details (Name: ${values.userName}, Phone: ${values.userPhone}, Request Time: ${requestTime}). Please complete the Rs. 100 initial service fee payment to proceed.`,
       variant: "default",
     });
   }
@@ -79,8 +90,8 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
     setTimeout(async () => {
       setIsLoading(true);
       await mockApiCall(); // Simulate provider finding/acceptance
-      const randomPhone = `98X${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`;
-      setMockProviderContact(`Provider Name (Mock), Phone: ${randomPhone}`);
+      const randomProviderPhone = `98X${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`;
+      setMockProviderContact(`Provider Name (Mock), Phone: ${randomProviderPhone}`);
       setRequestStatus("accepted");
       setIsLoading(false);
       toast({
@@ -245,6 +256,22 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
               <FormLabel>Your Name</FormLabel>
               <FormControl>
                 <Input placeholder="Enter your full name" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="userPhone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Your Phone Number</FormLabel>
+              <FormControl>
+                <div className="relative flex items-center">
+                    <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input type="tel" placeholder="e.g. 98XXXXXXXX" {...field} className="pl-10" />
+                </div>
               </FormControl>
               <FormMessage />
             </FormItem>

@@ -35,8 +35,8 @@ const providerProfileSchema = z.object({
   }),
   otherCategoryDescription: z.string().optional(),
   address: z.string().min(5, { message: "Address must be at least 5 characters." }),
-  phone: z.string().optional(),
-  email: z.string().email({ message: "Invalid email address." }).optional(),
+  phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }),
+  email: z.string().email({ message: "Invalid email address." }),
   servicesOffered: z.string().min(10, { message: "Describe services offered (min 10 characters)." }),
   rates: z.string().min(3, { message: "Rates description is required." }),
   availability: z.string().min(5, { message: "Availability information is required." }),
@@ -59,6 +59,8 @@ export default function ProviderProfileForm() {
     defaultValues: {
       name: "",
       address: "",
+      phone: "",
+      email: "",
       servicesOffered: "",
       rates: "",
       availability: "",
@@ -236,7 +238,7 @@ export default function ProviderProfileForm() {
             name="phone"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Phone Number (Optional)</FormLabel>
+                <FormLabel>Phone Number</FormLabel>
                 <FormControl>
                   <Input type="tel" placeholder="e.g. 98XXXXXXXX" {...field} />
                 </FormControl>
@@ -249,7 +251,7 @@ export default function ProviderProfileForm() {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Email Address (Optional)</FormLabel>
+                <FormLabel>Email Address</FormLabel>
                 <FormControl>
                   <Input type="email" placeholder="e.g. your.email@example.com" {...field} />
                 </FormControl>
