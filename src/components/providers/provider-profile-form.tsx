@@ -48,7 +48,7 @@ const providerProfileSchema = z.object({
   address: z.string().min(5, { message: "Address must be at least 5 characters." }),
   phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }),
   email: z.string().email({ message: "Invalid email address." }),
-  servicesOfferedDescription: z.string().optional(), // Textarea for comma-separated services, now optional
+  servicesOfferedDescription: z.string().optional(), 
   rateType: z.custom<RateType>((val) => rateTypeOptions.map(rt => rt.value).includes(val as RateType), {
     message: "Please select a valid rate type.",
   }),
@@ -103,7 +103,7 @@ const providerProfileSchema = z.object({
     }
     return true;
 }, {
-    message: "Please provide some details if rates vary or upon consultation (min 5 characters).",
+    message: "Please provide some details if rates vary (e.g., a price range or how it's calculated, min 5 characters).",
     path: ["rateDetails"]
 });
 
@@ -154,12 +154,12 @@ export default function ProviderProfileForm() {
 
     const submissionData = { 
       ...values, 
-      servicesOffered: servicesArray, // Overwrite with processed array
+      servicesOffered: servicesArray, 
       availability: availabilityData,
-      rates: ratesData, // Overwrite with structured rates
+      rates: ratesData, 
+      otherCategoryDescription: values.category === 'other' ? values.otherCategoryDescription : undefined,
     };
 
-    // Remove redundant/processed fields from the top level of submissionData
     delete submissionData.servicesOfferedDescription;
     delete submissionData.availableDays;
     delete submissionData.startTime;
@@ -421,13 +421,15 @@ export default function ProviderProfileForm() {
             name="rateDetails"
             render={({ field }) => (
             <FormItem>
-                <FormLabel>Additional Rate Details (Optional)</FormLabel>
+                <FormLabel>Additional Rate Details {selectedRateType === "varies" || selectedRateType === "free-consultation" ? "" : "(Optional)"}</FormLabel>
                 <FormControl>
                 <Textarea
                     placeholder={
                         selectedRateType === "varies" 
-                        ? "Explain how your rates are determined (e.g., based on complexity, materials needed)." 
-                        : "Any extra info about your rates (e.g., minimum charges, what's included)."
+                        ? "Explain how your rates are determined (e.g., Rs. 500 - Rs. 1000 depending on complexity, or describe how it's calculated)." 
+                        : selectedRateType === "free-consultation"
+                        ? "Describe what the free consultation includes (e.g., 30-min initial assessment)."
+                        : "Any extra info about your rates (e.g., minimum charges, what's included, travel fees if applicable)."
                     }
                     className="resize-none"
                     rows={3}
@@ -435,7 +437,12 @@ export default function ProviderProfileForm() {
                 />
                 </FormControl>
                  <FormDescription>
-                    {selectedRateType === "free-consultation" ? "You can mention what the free consultation covers." : "Add any clarifications about your pricing."}
+                    {selectedRateType === "varies" 
+                        ? "This explanation is important if your rates are not fixed. Please provide details (min 5 characters)."
+                        : selectedRateType === "free-consultation" 
+                        ? "Clearly state what the free consultation entails." 
+                        : "Add any clarifications about your pricing."
+                    }
                  </FormDescription>
                 <FormMessage />
             </FormItem>
@@ -550,3 +557,4 @@ export default function ProviderProfileForm() {
     </Form>
   );
 }
+
