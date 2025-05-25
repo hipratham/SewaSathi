@@ -212,7 +212,7 @@ export default function DashboardPage() {
                             <p><span className="font-semibold">Client Need:</span> {req.clientServiceNeeded.substring(0, 100)}...</p>
                             <p><span className="font-semibold">Provider Estimate:</span> Rs. {req.estimatedJobValueByProvider?.toFixed(2)}</p>
                             <p><span className="font-semibold">Admin Fee (8%):</span> Rs. {req.adminFeeCalculated?.toFixed(2)}</p>
-                            <p><span className="font-semibold">Status:</span> <Badge variant="secondary" className="capitalize">{req.status.replace(/_/g, ' ')}</Badge></p>
+                            <div><span className="font-semibold">Status:</span> <Badge variant="secondary" className="capitalize">{req.status.replace(/_/g, ' ')}</Badge></div>
                           </CardContent>
                           <CardFooter className="flex justify-end gap-2">
                             <Button variant="default" size="sm" onClick={() => handleAdminApprovePayment(req.id)}>
