@@ -34,8 +34,14 @@ export default function Header() {
   };
   
   let dynamicNavLinks = [...baseNavLinks];
-  if (role !== 'provider') {
-    dynamicNavLinks.push({ href: "/request-service", label: "Request Service" });
+  if (role === 'provider') {
+    // Filter out "Find Providers" for providers
+    dynamicNavLinks = dynamicNavLinks.filter(link => link.href !== "/providers");
+  } else {
+    // Keep or add "Request Service" for non-providers
+    if (!dynamicNavLinks.some(link => link.href === "/request-service")) {
+      dynamicNavLinks.push({ href: "/request-service", label: "Request Service" });
+    }
   }
   
   const providerSpecificLinks = role === 'provider' ? [{ href: "/provider-setup", label: "My Provider Profile" }] : [];
@@ -145,5 +151,3 @@ export default function Header() {
     </header>
   );
 }
-
-    
