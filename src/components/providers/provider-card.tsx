@@ -1,7 +1,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import type { ServiceProvider, ServiceProviderAvailability, ServiceProviderRates, RateType } from "@/lib/types";
+import type { ServiceProvider, ServiceProviderAvailability, ServiceProviderRates } from "@/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ServiceCategoryIcon from "@/components/icons/service-category-icon";
@@ -15,32 +15,21 @@ const formatAvailabilityForCard = (availability?: ServiceProviderAvailability): 
   if (!availability) return "Not specified";
   let parts: string[] = [];
   if (availability.days && availability.days.length > 0) {
-    if (availability.days.length === 7) {
-      parts.push("Everyday");
-    } else if (availability.days.length === 5 && availability.days.includes("Mon") && availability.days.includes("Fri")) {
-      parts.push("Weekdays");
-    }
-    else {
-      parts.push(availability.days.join(', '));
-    }
+    if (availability.days.length === 7) parts.push("Everyday");
+    else if (availability.days.length === 5 && availability.days.includes("Mon") && availability.days.includes("Fri")) parts.push("Weekdays");
+    else parts.push(availability.days.join(', '));
   }
-  if (availability.startTime && availability.endTime) {
-    parts.push(`${availability.startTime} - ${availability.endTime}`);
-  } else if (availability.startTime) {
-    parts.push(`from ${availability.startTime}`);
-  } else if (availability.endTime) {
-    parts.push(`until ${availability.endTime}`);
-  }
+  if (availability.startTime && availability.endTime) parts.push(`${availability.startTime} - ${availability.endTime}`);
+  else if (availability.startTime) parts.push(`from ${availability.startTime}`);
+  else if (availability.endTime) parts.push(`until ${availability.endTime}`);
   
   const mainAvailability = parts.length > 0 ? parts.join(' ') : "Check profile";
-  if (availability.notes) {
-      return `${mainAvailability} (${availability.notes.substring(0,30)}${availability.notes.length > 30 ? '...' : ''})`;
-  }
+  if (availability.notes) return `${mainAvailability} (${availability.notes.substring(0,30)}${availability.notes.length > 30 ? '...' : ''})`;
   return mainAvailability;
 };
 
 const formatRatesForCard = (rates: ServiceProviderRates): string => {
-  const { type, amount, details } = rates;
+  const { type, amount, minAmount, maxAmount, details } = rates;
   let rateString = "";
 
   switch (type) {
@@ -54,7 +43,8 @@ const formatRatesForCard = (rates: ServiceProviderRates): string => {
       rateString = amount ? `Rs. ${amount} (fixed)` : "Fixed price (see details)";
       break;
     case "varies":
-      rateString = "Rates vary";
+      if (minAmount && maxAmount) rateString = `Rs. ${minAmount} - Rs. ${maxAmount}`;
+      else rateString = "Rates vary";
       break;
     case "free-consultation":
       rateString = "Free Consultation";
@@ -62,14 +52,15 @@ const formatRatesForCard = (rates: ServiceProviderRates): string => {
     default:
       rateString = "Check profile for rates";
   }
-  if (details && (type === "varies" || type === "free-consultation")) {
+  
+  // Add a snippet of details if it's a non-amount based type and details exist
+  if (details && (type === "varies" || type === "free-consultation") && !(minAmount && maxAmount && type === "varies")) {
     rateString += `: ${details.substring(0, 20)}${details.length > 20 ? '...' : ''}`;
-  } else if (details && amount) {
+  } else if (details && amount) { // Or if it's an amount-based type and details exist
      rateString += ` (${details.substring(0, 15)}${details.length > 15 ? '...' : ''})`;
   }
   return rateString;
 };
-
 
 export default function ProviderCard({ provider }: ProviderCardProps) {
   return (
@@ -91,6 +82,9 @@ export default function ProviderCard({ provider }: ProviderCardProps) {
             <div className="flex items-center text-sm text-muted-foreground mb-1">
               <ServiceCategoryIcon category={provider.category} className="w-4 h-4 mr-1.5" />
               <span>{provider.category.charAt(0).toUpperCase() + provider.category.slice(1).replace('-', ' ')}</span>
+              {provider.category === 'other' && provider.otherCategoryDescription && (
+                <span className="ml-1 text-xs opacity-80">({provider.otherCategoryDescription.substring(0,20)}{provider.otherCategoryDescription.length > 20 ? '...' : ''})</span>
+              )}
             </div>
             <div className="flex items-center text-sm text-muted-foreground">
               <MapPin className="w-4 h-4 mr-1.5" />
@@ -105,6 +99,18 @@ export default function ProviderCard({ provider }: ProviderCardProps) {
             Services: {provider.servicesOffered.join(", ")}
           </CardDescription>
         )}
+         {provider.servicesOffered.length === 0 && provider.category !== "other" && (
+            <CardDescription className="text-sm">
+             Primary service: {provider.category.charAt(0).toUpperCase() + provider.category.slice(1).replace('-', ' ')}
+            </CardDescription>
+        )}
+         {provider.servicesOffered.length === 0 && provider.category === "other" && provider.otherCategoryDescription && (
+            <CardDescription className="text-sm">
+             Offers: {provider.otherCategoryDescription.substring(0,50)}{provider.otherCategoryDescription.length > 50 ? '...' : ''}
+            </CardDescription>
+        )}
+
+
         <div className="flex items-center gap-1 text-sm font-medium">
           <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
           <span>{provider.overallRating.toFixed(1)}</span>

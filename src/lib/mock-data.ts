@@ -34,19 +34,18 @@ const calculateOverallRating = (reviews: Review[]): number => {
   return parseFloat((totalRating / reviews.length).toFixed(1));
 };
 
-// Temporary type for raw mock data before full processing
 interface RawProviderData {
   name: string;
   category: ServiceProvider['category'];
-  servicesOfferedArray: string[]; // Changed from servicesOffered (string)
-  contactInfo: ServiceProvider['contactInfo'];
+  servicesOfferedArray: string[];
+  contactInfo: { phone: string; email: string };
   address: string;
   location?: ServiceProvider['location'];
-  ratesObject: ServiceProviderRates; // Changed from rates (string)
+  ratesObject: ServiceProviderRates;
   availabilityString: string;
   profileImage?: string;
+  otherCategoryDescription?: string;
 }
-
 
 const mockProvidersRawData: RawProviderData[] = [
   {
@@ -75,10 +74,10 @@ const mockProvidersRawData: RawProviderData[] = [
     name: "Hari Appliance Repairs",
     category: "appliance-repair",
     servicesOfferedArray: ["AC Repair", "Fridge Servicing", "Washing Machine Fix"],
-    contactInfo: { phone: "96XXXXXXXX" },
+    contactInfo: { phone: "96XXXXXXXX", email: "hari.appliance@example.com" },
     address: "Thapathali, Kathmandu",
     location: { lat: 27.6937, lng: 85.3180 },
-    ratesObject: { type: "varies", details: "Inspection fee may apply. Quotes provided after diagnosis." },
+    ratesObject: { type: "varies", minAmount: 500, maxAmount: 2500, details: "Inspection fee Rs. 300, waived if service availed." },
     availabilityString: "Everyday, 8 AM - 8 PM",
     profileImage: "https://placehold.co/300x300.png?text=HA",
   },
@@ -86,7 +85,7 @@ const mockProvidersRawData: RawProviderData[] = [
     name: "Gita Home Tutions",
     category: "tuition-teacher",
     servicesOfferedArray: ["Maths (Class 1-10)", "Science (Class 1-10)", "English Language"],
-    contactInfo: { email: "gita.tutions@example.com" },
+    contactInfo: { phone: "95XXXXXXX0", email: "gita.tutions@example.com" },
     address: "Patan Durbar Square, Lalitpur",
     location: { lat: 27.6730, lng: 85.3240 },
     ratesObject: { type: "fixed-project", amount: 5000, details: "Per subject, per month. Group discounts available." },
@@ -97,7 +96,7 @@ const mockProvidersRawData: RawProviderData[] = [
     name: "CleanSweep Home Services",
     category: "house-cleaning",
     servicesOfferedArray: ["General house cleaning", "Deep cleaning", "Office cleaning"],
-    contactInfo: { phone: "95XXXXXXX0" },
+    contactInfo: { phone: "94XXXXXXX1", email: "cleansweep@example.com" },
     address: "Asan, Kathmandu",
     ratesObject: { type: "per-job", amount: 1200, details: "For standard 2BHK. Additional charges for larger areas or deep cleaning." },
     availabilityString: "Mon-Sun, 9 AM - 5 PM",
@@ -107,9 +106,9 @@ const mockProvidersRawData: RawProviderData[] = [
     name: "Creative Wall Painters",
     category: "painter",
     servicesOfferedArray: ["Interior Painting", "Exterior Painting", "Wall Texturing"],
-    contactInfo: { phone: "94XXXXXXX1", email: "creativewalls@example.com" },
+    contactInfo: { phone: "93XXXXXXX2", email: "creativewalls@example.com" },
     address: "Jawalakhel, Lalitpur",
-    ratesObject: { type: "free-consultation", details: "Free on-site inspection and quotation for painting projects." },
+    ratesObject: { type: "free-consultation", details: "Free on-site inspection and detailed quotation provided for all painting projects. No obligation." },
     availabilityString: "Mon-Sat, 10 AM - 5 PM",
     profileImage: "https://placehold.co/300x300.png?text=WP",
   },
@@ -118,50 +117,31 @@ const mockProvidersRawData: RawProviderData[] = [
 const parseAvailabilityString = (availabilityString: string): ServiceProviderAvailability => {
     const availability: ServiceProviderAvailability = { days: [] };
     const lowerStr = availabilityString.toLowerCase();
-
     const dayMap: { [key: string]: string } = {
-        "mon": "Mon", "monday": "Mon",
-        "tue": "Tue", "tuesday": "Tue",
-        "wed": "Wed", "wednesday": "Wed",
-        "thu": "Thu", "thursday": "Thu",
-        "fri": "Fri", "friday": "Fri",
-        "sat": "Sat", "saturday": "Sat",
+        "mon": "Mon", "monday": "Mon", "tue": "Tue", "tuesday": "Tue",
+        "wed": "Wed", "wednesday": "Wed", "thu": "Thu", "thursday": "Thu",
+        "fri": "Fri", "friday": "Fri", "sat": "Sat", "saturday": "Sat",
         "sun": "Sun", "sunday": "Sun",
     };
-
     const daysFound = new Set<string>();
-
     if (lowerStr.includes("mon-fri")) ["Mon", "Tue", "Wed", "Thu", "Fri"].forEach(d => daysFound.add(d));
     if (lowerStr.includes("mon-sat")) ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach(d => daysFound.add(d));
     if (lowerStr.includes("everyday") || lowerStr.includes("mon-sun")) ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].forEach(d => daysFound.add(d));
-    
     Object.keys(dayMap).forEach(key => {
-        if (lowerStr.includes(key) && !daysFound.has(dayMap[key])) {
-            daysFound.add(dayMap[key]);
-        }
+        if (lowerStr.includes(key) && !daysFound.has(dayMap[key])) daysFound.add(dayMap[key]);
     });
     if (lowerStr.includes("weekend")) { daysFound.add("Sat"); daysFound.add("Sun"); }
-
     availability.days = Array.from(daysFound);
-    if(availability.days.length === 0 && !lowerStr.includes("appointment")) {
-        availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri"]; // Default if no days parsed unless by appointment
-    }
-
-
+    if(availability.days.length === 0 && !lowerStr.includes("appointment")) availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
     const timeRegex = /(\d{1,2})\s*(am|pm)?\s*-\s*(\d{1,2})\s*(am|pm)?/;
     const timeMatch = availabilityString.match(timeRegex);
-
     if (timeMatch) {
-        let startHour = parseInt(timeMatch[1]);
-        const startPeriod = timeMatch[2];
-        let endHour = parseInt(timeMatch[3]);
-        const endPeriod = timeMatch[4];
-
+        let startHour = parseInt(timeMatch[1]); const startPeriod = timeMatch[2];
+        let endHour = parseInt(timeMatch[3]); const endPeriod = timeMatch[4];
         if (startPeriod === "pm" && startHour < 12) startHour += 12;
         if (startPeriod === "am" && startHour === 12) startHour = 0; 
         if (endPeriod === "pm" && endHour < 12) endHour += 12;
         if (endPeriod === "am" && endHour === 12) endHour = 0; 
-
         availability.startTime = `${String(startHour).padStart(2, '0')}:00`;
         availability.endTime = `${String(endHour).padStart(2, '0')}:00`;
     } else {
@@ -171,18 +151,14 @@ const parseAvailabilityString = (availabilityString: string): ServiceProviderAva
         if (lowerStr.includes("4 pm")) availability.startTime = "16:00";
         if (lowerStr.includes("7 pm")) availability.endTime = "19:00";
     }
-    
     if(lowerStr.includes("by appointment")) availability.notes = (availability.notes ? availability.notes + "; " : "") + "By appointment only";
     if(lowerStr.includes("24/7")) {
         availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-        availability.startTime = "00:00";
-        availability.endTime = "23:59";
+        availability.startTime = "00:00"; availability.endTime = "23:59";
         availability.notes = (availability.notes ? availability.notes + "; " : "") + "24/7 Emergency Available";
     }
-
     return availability;
 };
-
 
 export const mockServiceProviders: ServiceProvider[] = mockProvidersRawData.map(
   (providerData, index) => {
@@ -191,15 +167,16 @@ export const mockServiceProviders: ServiceProvider[] = mockProvidersRawData.map(
       id: `${providerData.category}-${index + 1}`,
       name: providerData.name,
       category: providerData.category,
-      servicesOffered: providerData.servicesOfferedArray, // Directly use the array
+      servicesOffered: providerData.servicesOfferedArray,
       contactInfo: providerData.contactInfo,
       address: providerData.address,
       location: providerData.location,
-      rates: providerData.ratesObject, // Use the structured rates object
+      rates: providerData.ratesObject,
       overallRating: calculateOverallRating(reviews),
       reviews,
       availability: parseAvailabilityString(providerData.availabilityString),
       profileImage: providerData.profileImage,
+      otherCategoryDescription: providerData.otherCategoryDescription,
     };
   }
 );

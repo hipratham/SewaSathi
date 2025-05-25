@@ -34,14 +34,16 @@ export const rateTypeOptions: { value: RateType; label: string }[] = [
   { value: "per-hour", label: "Per Hour" },
   { value: "per-job", label: "Per Job (approximate)" },
   { value: "fixed-project", label: "Fixed Project Price" },
-  { value: "varies", label: "Varies / Upon Consultation" },
+  { value: "varies", label: "Varies (specify range)" },
   { value: "free-consultation", label: "Offers Free Consultation" },
 ];
 
 export interface ServiceProviderRates {
   type: RateType;
-  amount?: number; 
-  details?: string; 
+  amount?: number;        // Used for per-hour, per-job, fixed-project
+  minAmount?: number;     // Used if type is 'varies'
+  maxAmount?: number;     // Used if type is 'varies'
+  details?: string;       // Used for 'free-consultation' description or optional notes for other types
 }
 
 export interface Review {
@@ -64,10 +66,10 @@ export interface ServiceProvider {
   id: string;
   name: string;
   category: ServiceCategory;
-  servicesOffered: string[]; // This is an array of service strings
+  servicesOffered: string[]; 
   contactInfo: {
-    phone?: string;
-    email?: string;
+    phone: string; // Made mandatory
+    email: string; // Made mandatory
   };
   address: string;
   location?: {

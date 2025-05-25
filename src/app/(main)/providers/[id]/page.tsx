@@ -4,7 +4,7 @@
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import { mockServiceProviders } from "@/lib/mock-data";
-import type { ServiceProvider, Review as ReviewType, ServiceProviderAvailability, ServiceProviderRates, RateType } from "@/lib/types";
+import type { ServiceProvider, Review as ReviewType, ServiceProviderAvailability, ServiceProviderRates } from "@/lib/types";
 import ServiceCategoryIcon from "@/components/icons/service-category-icon";
 import ReviewCard from "@/components/reviews/review-card";
 import ReviewSummary from "@/components/reviews/review-summary";
@@ -40,7 +40,7 @@ const formatAvailabilityForProfile = (availability?: ServiceProviderAvailability
 };
 
 const formatRatesForProfile = (rates: ServiceProviderRates): React.ReactNode => {
-  const { type, amount, details } = rates;
+  const { type, amount, minAmount, maxAmount, details } = rates;
   let rateString = "";
 
   switch (type) {
@@ -54,7 +54,8 @@ const formatRatesForProfile = (rates: ServiceProviderRates): React.ReactNode => 
       rateString = amount ? `Rs. ${amount} (fixed project price)` : "Fixed project price (details not specified)";
       break;
     case "varies":
-      rateString = "Rates vary / Upon Consultation";
+      if (minAmount && maxAmount) rateString = `Rs. ${minAmount} - Rs. ${maxAmount}`;
+      else rateString = "Rates vary / Upon Consultation";
       break;
     case "free-consultation":
       rateString = "Offers Free Consultation";
@@ -69,7 +70,9 @@ const formatRatesForProfile = (rates: ServiceProviderRates): React.ReactNode => 
       {details && (
         <Alert variant="default" className="mt-2 text-sm bg-secondary/30 border-secondary/50">
           <Info className="h-4 w-4 text-secondary-foreground/80" />
-          <AlertTitle className="text-secondary-foreground font-medium">Rate Details</AlertTitle>
+          <AlertTitle className="text-secondary-foreground font-medium">
+            {type === "free-consultation" ? "Consultation Details" : "Rate Details"}
+          </AlertTitle>
           <AlertDescription className="text-secondary-foreground/90">
             {details}
           </AlertDescription>
@@ -78,7 +81,6 @@ const formatRatesForProfile = (rates: ServiceProviderRates): React.ReactNode => 
     </>
   );
 };
-
 
 export default function ProviderProfilePage() {
   const params = useParams();
@@ -168,7 +170,7 @@ export default function ProviderProfilePage() {
             {(!provider.servicesOffered || provider.servicesOffered.length === 0) && provider.category !== "other" && (
                  <Alert variant="default" className="bg-muted/50">
                     <Info className="h-4 w-4" />
-                    <AlertTitle>Services</AlertTitle>
+                    <AlertTitle>Primary Service</AlertTitle>
                     <AlertDescription>
                     This provider primarily offers services under the <span className="font-semibold">{provider.category.replace('-', ' ')}</span> category. Contact them for specific needs.
                     </AlertDescription>
@@ -177,7 +179,7 @@ export default function ProviderProfilePage() {
              {(!provider.servicesOffered || provider.servicesOffered.length === 0) && provider.category === "other" && provider.otherCategoryDescription && (
                  <Alert variant="default" className="bg-muted/50">
                     <Info className="h-4 w-4" />
-                    <AlertTitle>Services</AlertTitle>
+                    <AlertTitle>Primary Service</AlertTitle>
                     <AlertDescription>
                     This provider offers: <span className="font-semibold">{provider.otherCategoryDescription}</span>. Contact them for specific needs.
                     </AlertDescription>
@@ -206,9 +208,8 @@ export default function ProviderProfilePage() {
                     {formatRatesForProfile(provider.rates)}
                 </div>
             </section>
-
-
           </div>
+
           <div className="md:col-span-1 space-y-4">
             <Card className="bg-background">
               <CardHeader>
