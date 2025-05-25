@@ -13,6 +13,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -45,16 +46,16 @@ export default function ProviderSearchForm() {
     defaultValues: {
       name: "",
       location: "",
+      // Ensure serviceType has a default if it can be undefined, or remove if not needed
+      // serviceType: undefined, 
     },
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     console.log("Search values:", values);
-    // Navigate to providers list page with query params
     const query = new URLSearchParams({
       service: values.serviceType,
       location: values.location,
-      // clientName: values.name, // Not typically used for search results page, but for request
     }).toString();
     router.push(`/providers?${query}`);
   }
@@ -77,18 +78,23 @@ export default function ProviderSearchForm() {
 
             if (addr) {
                 const parts: string[] = [];
-                // Order of preference for address components
                 if (addr.road) parts.push(addr.road);
                 if (addr.neighbourhood) parts.push(addr.neighbourhood);
                 else if (addr.suburb) parts.push(addr.suburb);
                 
                 const cityLevel = addr.city || addr.town || addr.village || addr.city_district;
-                if (cityLevel) parts.push(cityLevel);
+                 if (cityLevel && !parts.some(p => p.toLowerCase() === cityLevel.toLowerCase())) {
+                    parts.push(cityLevel);
+                 }
 
-                // Basic duplicate removal and join
-                const uniqueParts = parts.filter((part, index, self) => part && self.findIndex(p => p.toLowerCase() === part.toLowerCase()) === index);
+                const country = addr.country;
+                if (country && parts.length > 0 && !parts.some(p => p.toLowerCase() === country.toLowerCase())) {
+                    parts.push(country);
+                }
                 
-                if (uniqueParts.length >= 2) { 
+                const uniqueParts = parts.filter((part, index, self) => part && self.findIndex(p => p.toLowerCase().trim() === part.toLowerCase().trim()) === index);
+                
+                if (uniqueParts.length > 0) { 
                     displayAddress = uniqueParts.join(', ');
                 }
             }
@@ -98,30 +104,48 @@ export default function ProviderSearchForm() {
             }
             
             if (!displayAddress) {
-              displayAddress = `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Please refine.`;
+              displayAddress = `Approx. Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. IMPORTANT: Please verify & refine.`;
             }
             
             form.setValue("location", displayAddress, { shouldValidate: true });
-            toast({ title: "Location Set", description: `Address updated to: ${displayAddress}. Please verify this address.` });
+            toast({ 
+                title: "Location Approximated", 
+                description: `Address set to: "${displayAddress}". IMPORTANT: Please verify this address and correct it if needed. Geolocation can be imprecise.`,
+                duration: 9000, 
+            });
           } catch (error) {
             console.error("Error reverse geocoding:", error);
-            form.setValue("location", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Refine manually.`, { shouldValidate: true });
-            toast({ variant: "destructive", title: "Geocoding Error", description: "Could not fetch address. Using coordinates." });
+            form.setValue("location", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Could not fetch address; please enter manually and verify.`, { shouldValidate: true });
+            toast({ 
+                variant:"destructive", 
+                title: "Geocoding Error", 
+                description: "Could not fetch address details. Using coordinates. Please enter manually and verify.",
+                duration: 9000,
+            });
           } finally {
             setIsLocating(false);
           }
         },
         (error) => {
           console.error("Error getting location", error);
-          toast({ variant: "destructive", title: "Location Error", description: "Could not get current location. Please enter manually." });
+          toast({ 
+            variant: "destructive", 
+            title: "Location Access Error", 
+            description: "Could not get current location. Please ensure location services are enabled and permissions are granted, then try again or enter manually.",
+            duration: 9000,
+          });
           setIsLocating(false);
         }
       );
     } else {
-      toast({ variant: "destructive", title: "Location Error", description: "Geolocation is not supported by your browser." });
+      toast({ 
+        variant: "destructive", 
+        title: "Location Error", 
+        description: "Geolocation is not supported by your browser. Please enter your address manually.",
+        duration: 9000,
+      });
     }
   };
-
 
   return (
     <Form {...form}>
@@ -145,7 +169,7 @@ export default function ProviderSearchForm() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Service Type</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value || ""}>
+              <Select onValueChange={field.onChange} value={field.value || ""} defaultValue={field.value || ""}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a service type" />
@@ -173,23 +197,22 @@ export default function ProviderSearchForm() {
                 <FormControl>
                   <div className="relative w-full">
                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input placeholder="e.g. Baneshwor, Kathmandu" {...field} className="pl-10"/>
+                    <Input placeholder="e.g. Baneshwor, Kathmandu (Verify if auto-filled)" {...field} className="pl-10"/>
                   </div>
                 </FormControl>
                 <Button type="button" variant="outline" onClick={handleUseCurrentLocation} aria-label="Use current location" disabled={isLocating}>
                   {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
                 </Button>
               </div>
+              <FormDescription>If using auto-location, please verify its accuracy.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
-        <Button type="submit" className="w-full text-lg py-6">
+        <Button type="submit" className="w-full text-lg py-6" disabled={isLocating}>
           <Search className="mr-2 h-5 w-5" /> Search Providers
         </Button>
       </form>
     </Form>
   );
 }
-
-    

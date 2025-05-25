@@ -62,7 +62,7 @@ const providerProfileSchema = z.object({
   address: z.string().min(5, { message: "Address must be at least 5 characters." }),
   phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }),
   email: z.string().email({ message: "Invalid email address." }),
-  servicesOfferedDescription: z.string().optional(), // Made optional
+  servicesOfferedDescription: z.string().optional(), 
   rateType: z.custom<RateType>((val) => rateTypeOptions.map(rt => rt.value).includes(val as RateType), {
     message: "Please select a valid rate type.",
   }),
@@ -85,12 +85,10 @@ const providerProfileSchema = z.object({
   path: ["otherCategoryDescription"],
 })
 .refine(data => {
-  // If one time is provided, the other must also be provided.
   const startTimeProvided = !!data.startTime;
   const endTimeProvided = !!data.endTime;
   if (startTimeProvided !== endTimeProvided) return false; 
   
-  // If both are provided, endTime must be after startTime.
   if (startTimeProvided && endTimeProvided && data.startTime && data.endTime) {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
@@ -119,7 +117,7 @@ const providerProfileSchema = z.object({
   return true;
 }, {
   message: "Minimum and Maximum amounts are required and must be positive for 'Varies' rate type.",
-  path: ["rateMinAmount"], // Apply error to minAmount, or use a general path if needed
+  path: ["rateMinAmount"], 
 })
 .refine(data => {
   if (data.rateType === "varies" && data.rateMinAmount && data.rateMaxAmount) {
@@ -142,7 +140,6 @@ const providerProfileSchema = z.object({
 
 type ProviderProfileFormValues = z.infer<typeof providerProfileSchema>;
 
-// Helper function to map database data to form data structure
 function mapDbDataToForm(dbData: any): Partial<ProviderProfileFormValues> {
     return {
         name: dbData.name || "",
@@ -164,7 +161,6 @@ function mapDbDataToForm(dbData: any): Partial<ProviderProfileFormValues> {
     };
 }
 
-// Helper to format current values for confirmation dialog
 function formatCurrentValuesForDialog(values: ProviderProfileFormValues, fieldLabels: Record<string, string>): string[] {
     const summary: string[] = [];
     (Object.keys(values) as Array<keyof ProviderProfileFormValues>).forEach(key => {
@@ -174,7 +170,7 @@ function formatCurrentValuesForDialog(values: ProviderProfileFormValues, fieldLa
         const isOptionalRateAmount = (key === 'rateAmount' && !["per-hour", "per-job", "fixed-project"].includes(values.rateType));
         const isOptionalMinMax = ((key === 'rateMinAmount' || key === 'rateMaxAmount') && values.rateType !== 'varies');
         const isOptionalOtherDesc = (key === 'otherCategoryDescription' && values.category !== 'other');
-        const isOptionalRateDetails = (key === 'rateDetails' && values.rateType !== 'free-consultation');
+        const isOptionalRateDetails = (key === 'rateDetails' && values.rateType !== 'free-consultation' && values.rateType !== 'varies');
 
 
         if (value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0)) {
@@ -187,7 +183,7 @@ function formatCurrentValuesForDialog(values: ProviderProfileFormValues, fieldLa
             {
                  summary.push(`${label}: Not set`);
             } else if (value !== undefined) { 
-                summary.push(`${label}: ${value}`); // For required fields if they are somehow empty
+                summary.push(`${label}: ${value}`); 
             }
         } else if (Array.isArray(value)) {
             summary.push(`${label}: ${value.join(', ') || 'None'}`);
@@ -237,7 +233,7 @@ export default function ProviderProfileForm() {
       address: "",
       phone: "",
       email: "",
-      servicesOfferedDescription: "", // Optional field
+      servicesOfferedDescription: "", 
       rateType: "varies", 
       rateAmount: undefined,
       rateMinAmount: undefined,
@@ -303,7 +299,7 @@ export default function ProviderProfileForm() {
     };
 
     const submissionData = {
-      userId: user.uid, // Store userId for potential queries
+      userId: user.uid, 
       name: values.name,
       category: values.category,
       otherCategoryDescription: values.category === 'other' ? values.otherCategoryDescription : undefined,
@@ -362,18 +358,20 @@ export default function ProviderProfileForm() {
 
             if (addr) {
                 const parts: string[] = [];
-                // Order of preference for address components
                 if (addr.road) parts.push(addr.road);
                 if (addr.neighbourhood) parts.push(addr.neighbourhood);
                 else if (addr.suburb) parts.push(addr.suburb);
                 
                 const cityLevel = addr.city || addr.town || addr.village || addr.city_district;
-                if (cityLevel) parts.push(cityLevel);
-
-                // Basic duplicate removal and join
-                const uniqueParts = parts.filter((part, index, self) => part && self.findIndex(p => p.toLowerCase() === part.toLowerCase()) === index);
+                if (cityLevel && !parts.some(p => p.toLowerCase() === cityLevel.toLowerCase())) parts.push(cityLevel);
                 
-                if (uniqueParts.length >= 2) { // Require at least two distinct parts for a good constructed address
+                const country = addr.country;
+                if (country && parts.length > 0 && !parts.some(p => p.toLowerCase() === country.toLowerCase())) parts.push(country);
+
+
+                const uniqueParts = parts.filter((part, index, self) => part && self.findIndex(p => p.toLowerCase().trim() === part.toLowerCase().trim()) === index);
+                
+                if (uniqueParts.length > 0) { 
                     displayAddress = uniqueParts.join(', ');
                 }
             }
@@ -383,27 +381,46 @@ export default function ProviderProfileForm() {
             }
             
             if (!displayAddress) {
-                displayAddress = `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Please refine.`;
+                displayAddress = `Approx. Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Please verify & refine.`;
             }
             
             form.setValue("address", displayAddress, { shouldValidate: true });
-            toast({ title: "Location Set", description: `Address updated to: ${displayAddress}. Please verify this address.` });
+            toast({ 
+              title: "Location Approximated", 
+              description: `Address set to: "${displayAddress}". IMPORTANT: Please verify this address and correct it if needed. Geolocation can be imprecise.`,
+              duration: 9000, 
+            });
           } catch (error) {
             console.error("Error reverse geocoding:", error);
-            form.setValue("address", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Refine manually.`, { shouldValidate: true });
-            toast({ variant:"destructive", title: "Geocoding Error", description: "Could not fetch address. Using coordinates." });
+            form.setValue("address", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Could not fetch address; please enter manually and verify.`, { shouldValidate: true });
+            toast({ 
+                variant:"destructive", 
+                title: "Geocoding Error", 
+                description: "Could not fetch address details. Using coordinates. Please enter manually and verify.",
+                duration: 9000,
+            });
           } finally {
             setIsLocating(false);
           }
         },
         (error) => {
           console.error("Error getting location", error);
-          toast({ variant: "destructive", title: "Location Error", description: "Could not get current location. Please enter manually." });
+          toast({ 
+            variant: "destructive", 
+            title: "Location Access Error", 
+            description: "Could not get current location. Please ensure location services are enabled and permissions are granted, then try again or enter manually.",
+            duration: 9000,
+          });
           setIsLocating(false);
         }
       );
     } else {
-      toast({ variant: "destructive", title: "Location Error", description: "Geolocation is not supported by your browser." });
+      toast({ 
+        variant: "destructive", 
+        title: "Location Error", 
+        description: "Geolocation is not supported by your browser. Please enter your address manually.",
+        duration: 9000,
+      });
     }
   };
 
@@ -445,7 +462,7 @@ export default function ProviderProfileForm() {
                     field.onChange(value);
                     if (value !== 'other') {
                       form.setValue('otherCategoryDescription', '');
-                      form.clearErrors('otherCategoryDescription'); // Clear error if category changes from 'other'
+                      form.clearErrors('otherCategoryDescription'); 
                     }
                   }}
                   value={field.value || ""} 
@@ -481,6 +498,7 @@ export default function ProviderProfileForm() {
                       className="resize-none"
                       rows={3}
                       {...field}
+                      value={field.value ?? ""}
                     />
                   </FormControl>
                   <FormMessage />
@@ -497,13 +515,13 @@ export default function ProviderProfileForm() {
                 <FormLabel>Your Address / Service Area</FormLabel>
                 <div className="flex gap-2">
                   <FormControl>
-                    <Input placeholder="e.g. Kalanki, Kathmandu" {...field} />
+                    <Input placeholder="e.g. Kalanki, Kathmandu (Verify if auto-filled)" {...field} />
                   </FormControl>
                   <Button type="button" variant="outline" onClick={handleUseCurrentLocation} aria-label="Use current location" disabled={isLocating}>
                     {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
                   </Button>
                 </div>
-                <FormDescription>Provide your main operating address or service area.</FormDescription>
+                <FormDescription>Provide your main operating address or service area. If using auto-location, please verify its accuracy.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -550,6 +568,7 @@ export default function ProviderProfileForm() {
                     className="resize-none"
                     rows={4}
                     {...field}
+                    value={field.value ?? ""}
                   />
                 </FormControl>
                 <FormDescription>This helps clients understand your expertise. Leave blank if your category is specific enough.</FormDescription>
@@ -567,7 +586,6 @@ export default function ProviderProfileForm() {
                 <Select 
                     onValueChange={(value) => {
                         field.onChange(value);
-                        // Clear dependent fields when rateType changes
                         form.setValue('rateAmount', undefined);
                         form.setValue('rateMinAmount', undefined);
                         form.setValue('rateMaxAmount', undefined);
@@ -650,8 +668,8 @@ export default function ProviderProfileForm() {
                       {selectedRateType === "free-consultation"
                           ? "Describe Free Consultation (Required)"
                           : selectedRateType === "varies"
-                          ? "Optional: Further explanation for varied rates"
-                          : "Optional: Additional notes about your rate"}
+                          ? "Optional: Further explanation for varied rates (e.g., factors affecting price)"
+                          : "Optional: Additional notes about your rate (e.g., minimum charges, travel fees)"}
                   </FormLabel>
                   <FormControl>
                   <Textarea
@@ -659,7 +677,7 @@ export default function ProviderProfileForm() {
                           selectedRateType === "free-consultation"
                           ? "Describe what the free consultation includes (e.g., 30-min initial assessment over phone, min 10 characters)."
                           : selectedRateType === "varies"
-                          ? "e.g., Price depends on job complexity, materials needed, and duration."
+                          ? "e.g., Price depends on job complexity, materials needed, and duration. Or specific conditions."
                           : "e.g., Minimum 2-hour charge, travel fees may apply outside city limits."
                       }
                       className="resize-none"
@@ -672,7 +690,7 @@ export default function ProviderProfileForm() {
                       {selectedRateType === "free-consultation"
                           ? "This description is required for free consultations."
                           : selectedRateType === "varies"
-                          ? "Provide context if the range isn't self-explanatory."
+                          ? "Provide context if the range isn't self-explanatory, or details on how rates are determined."
                           : "Add any clarifications about your pricing if needed."
                       }
                   </FormDescription>
@@ -764,7 +782,7 @@ export default function ProviderProfileForm() {
             )}
           />
 
-          <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
+          <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting || isLoadingData}>
             {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : (hasExistingProfile ? <Edit className="mr-2 h-5 w-5" /> : <Save className="mr-2 h-5 w-5" />)}
             {hasExistingProfile ? "Update Profile" : "Save Profile"}
           </Button>
