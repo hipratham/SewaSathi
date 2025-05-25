@@ -35,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (currentUser) {
         setUser(currentUser);
         // Fetch role from Realtime Database
+        console.log("AuthContext: Attempting to access database to fetch role for UID:", currentUser.uid, database); // Diagnostic log
         const userRoleRef = ref(database, `users/${currentUser.uid}/role`);
         try {
           const snapshot = await get(userRoleRef);
@@ -42,10 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRole(snapshot.val() as UserRole);
           } else {
             setRole(null); // Role not set or user data doesn't exist
-            console.warn("User role not found in database for UID:", currentUser.uid);
+            console.warn("AuthContext: User role not found in database for UID:", currentUser.uid);
           }
         } catch (error) {
-          console.error("Error fetching user role:", error);
+          console.error("AuthContext: Error fetching user role:", error);
           setRole(null);
         }
       } else {
