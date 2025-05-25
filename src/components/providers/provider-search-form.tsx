@@ -72,34 +72,40 @@ export default function ProviderSearchForm() {
             }
             const data = await response.json();
             
-            let formattedAddress = "";
-            if (data.address) {
-              const addr = data.address;
-              if (addr.road) formattedAddress += addr.road;
-              if (addr.suburb) formattedAddress += (formattedAddress ? ", " : "") + addr.suburb;
-              if (addr.city_district) formattedAddress += (formattedAddress ? ", " : "") + addr.city_district;
-              else if (addr.city) formattedAddress += (formattedAddress ? ", " : "") + addr.city;
-              else if (addr.town) formattedAddress += (formattedAddress ? ", " : "") + addr.town;
-              else if (addr.village) formattedAddress += (formattedAddress ? ", " : "") + addr.village;
-               if (addr.country && (formattedAddress === "" || !formattedAddress.toLowerCase().includes(addr.country.toLowerCase()))) {
-                 formattedAddress += (formattedAddress ? ", " : "") + addr.country;
-              }
+            let displayAddress = "";
+            const addr = data.address;
+
+            if (addr) {
+                const parts: string[] = [];
+                // Order of preference for address components
+                if (addr.road) parts.push(addr.road);
+                if (addr.neighbourhood) parts.push(addr.neighbourhood);
+                else if (addr.suburb) parts.push(addr.suburb);
+                
+                const cityLevel = addr.city || addr.town || addr.village || addr.city_district;
+                if (cityLevel) parts.push(cityLevel);
+
+                // Basic duplicate removal and join
+                const uniqueParts = parts.filter((part, index, self) => part && self.findIndex(p => p.toLowerCase() === part.toLowerCase()) === index);
+                
+                if (uniqueParts.length >= 2) { 
+                    displayAddress = uniqueParts.join(', ');
+                }
             }
             
-            if (formattedAddress) {
-              form.setValue("location", formattedAddress, { shouldValidate: true });
-              toast({ title: "Location Set", description: `Location updated to: ${formattedAddress}.` });
-            } else if (data.display_name) {
-               form.setValue("location", data.display_name, { shouldValidate: true });
-               toast({ title: "Location Set", description: `Location updated to: ${data.display_name}.` });
+            if (!displayAddress && data.display_name) {
+                displayAddress = data.display_name;
             }
-            else {
-              form.setValue("location", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}`, { shouldValidate: true });
-              toast({ title: "Coordinates Set", description: "Could not fetch address. Using coordinates." });
+            
+            if (!displayAddress) {
+              displayAddress = `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Please refine.`;
             }
+            
+            form.setValue("location", displayAddress, { shouldValidate: true });
+            toast({ title: "Location Set", description: `Address updated to: ${displayAddress}. Please verify this address.` });
           } catch (error) {
             console.error("Error reverse geocoding:", error);
-            form.setValue("location", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}`, { shouldValidate: true });
+            form.setValue("location", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Refine manually.`, { shouldValidate: true });
             toast({ variant: "destructive", title: "Geocoding Error", description: "Could not fetch address. Using coordinates." });
           } finally {
             setIsLocating(false);
@@ -139,7 +145,7 @@ export default function ProviderSearchForm() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Service Type</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value || ""}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a service type" />
@@ -185,3 +191,5 @@ export default function ProviderSearchForm() {
     </Form>
   );
 }
+
+    

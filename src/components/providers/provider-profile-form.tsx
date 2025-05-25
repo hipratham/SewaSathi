@@ -62,7 +62,7 @@ const providerProfileSchema = z.object({
   address: z.string().min(5, { message: "Address must be at least 5 characters." }),
   phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }),
   email: z.string().email({ message: "Invalid email address." }),
-  servicesOfferedDescription: z.string().optional(),
+  servicesOfferedDescription: z.string().optional(), // Made optional
   rateType: z.custom<RateType>((val) => rateTypeOptions.map(rt => rt.value).includes(val as RateType), {
     message: "Please select a valid rate type.",
   }),
@@ -71,8 +71,8 @@ const providerProfileSchema = z.object({
   rateMaxAmount: z.coerce.number().positive({ message: "Maximum amount must be positive." }).optional(),
   rateDetails: z.string().max(200, { message: "Details should be concise (max 200 characters)." }).optional(),
   availableDays: z.array(z.string()).nonempty({ message: "Please select at least one available day." }),
-  startTime: z.string().optional().refine(val => val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), { message: "Invalid time format."}),
-  endTime: z.string().optional().refine(val => val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), { message: "Invalid time format."}),
+  startTime: z.string().optional().refine(val => val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), { message: "Invalid time format (HH:MM)."}),
+  endTime: z.string().optional().refine(val => val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), { message: "Invalid time format (HH:MM)."}),
   availabilityNotes: z.string().optional(),
 })
 .refine(data => {
@@ -85,17 +85,21 @@ const providerProfileSchema = z.object({
   path: ["otherCategoryDescription"],
 })
 .refine(data => {
-  if (data.startTime && !data.endTime) return false;
-  if (!data.startTime && data.endTime) return false;
-  if (data.startTime && data.endTime) {
+  // If one time is provided, the other must also be provided.
+  const startTimeProvided = !!data.startTime;
+  const endTimeProvided = !!data.endTime;
+  if (startTimeProvided !== endTimeProvided) return false; 
+  
+  // If both are provided, endTime must be after startTime.
+  if (startTimeProvided && endTimeProvided && data.startTime && data.endTime) {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
     if (endH < startH || (endH === startH && endM <= startM)) return false;
   }
   return true;
 }, {
-  message: "End time must be after start time. Both are required if one is provided, or leave both blank.",
-  path: ["endTime"],
+  message: "End time must be after start time. Both start and end times are required if one is provided, or leave both blank.",
+  path: ["endTime"], 
 })
 .refine(data => {
   const amountRequiredTypes: RateType[] = ["per-hour", "per-job", "fixed-project"];
@@ -115,7 +119,7 @@ const providerProfileSchema = z.object({
   return true;
 }, {
   message: "Minimum and Maximum amounts are required and must be positive for 'Varies' rate type.",
-  path: ["rateMinAmount"],
+  path: ["rateMinAmount"], // Apply error to minAmount, or use a general path if needed
 })
 .refine(data => {
   if (data.rateType === "varies" && data.rateMinAmount && data.rateMaxAmount) {
@@ -164,15 +168,26 @@ function mapDbDataToForm(dbData: any): Partial<ProviderProfileFormValues> {
 function formatCurrentValuesForDialog(values: ProviderProfileFormValues, fieldLabels: Record<string, string>): string[] {
     const summary: string[] = [];
     (Object.keys(values) as Array<keyof ProviderProfileFormValues>).forEach(key => {
-        const label = fieldLabels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); // Auto-generate label if not found
+        const label = fieldLabels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
         let value = values[key];
-        if (value === undefined || value === null || value === "") {
-            // Don't show empty optional fields in summary or show as 'Not set'
-            if(key === 'servicesOfferedDescription' || key === 'otherCategoryDescription' || key === 'rateAmount' || key === 'rateMinAmount' || key === 'rateMaxAmount' || key === 'rateDetails' || key === 'startTime' || key === 'endTime' || key === 'availabilityNotes') {
-                 if (value !== undefined && value !== null && value !== "") summary.push(`${label}: ${value}`);
-                 else summary.push(`${label}: Not set`); // Explicitly show 'Not set' for clarity
-            } else if (value !== undefined) { // for required fields that might be empty string during form fill but are actually ""
-                summary.push(`${label}: ${value}`);
+        
+        const isOptionalRateAmount = (key === 'rateAmount' && !["per-hour", "per-job", "fixed-project"].includes(values.rateType));
+        const isOptionalMinMax = ((key === 'rateMinAmount' || key === 'rateMaxAmount') && values.rateType !== 'varies');
+        const isOptionalOtherDesc = (key === 'otherCategoryDescription' && values.category !== 'other');
+        const isOptionalRateDetails = (key === 'rateDetails' && values.rateType !== 'free-consultation');
+
+
+        if (value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0)) {
+            if (key === 'servicesOfferedDescription' || 
+                isOptionalOtherDesc || 
+                isOptionalRateAmount || 
+                isOptionalMinMax || 
+                isOptionalRateDetails || 
+                key === 'startTime' || key === 'endTime' || key === 'availabilityNotes') 
+            {
+                 summary.push(`${label}: Not set`);
+            } else if (value !== undefined) { 
+                summary.push(`${label}: ${value}`); // For required fields if they are somehow empty
             }
         } else if (Array.isArray(value)) {
             summary.push(`${label}: ${value.join(', ') || 'None'}`);
@@ -222,8 +237,8 @@ export default function ProviderProfileForm() {
       address: "",
       phone: "",
       email: "",
-      servicesOfferedDescription: "",
-      rateType: "varies", // Default rate type
+      servicesOfferedDescription: "", // Optional field
+      rateType: "varies", 
       rateAmount: undefined,
       rateMinAmount: undefined,
       rateMaxAmount: undefined,
@@ -247,11 +262,10 @@ export default function ProviderProfileForm() {
         if (snapshot.exists()) {
           const dbData = snapshot.val();
           const formData = mapDbDataToForm(dbData);
-          form.reset(formData); // Pre-fill the form
+          form.reset(formData); 
           setHasExistingProfile(true);
         } else {
           setHasExistingProfile(false);
-           // If no profile, ensure email is pre-filled from auth if available
           if(user.email) form.setValue('email', user.email);
           if(user.displayName) form.setValue('name', user.displayName);
         }
@@ -263,7 +277,7 @@ export default function ProviderProfileForm() {
         setIsLoadingData(false);
       });
     } else {
-      setIsLoadingData(false); // No user, so nothing to load
+      setIsLoadingData(false); 
     }
   }, [user, form, toast]);
 
@@ -289,6 +303,7 @@ export default function ProviderProfileForm() {
     };
 
     const submissionData = {
+      userId: user.uid, // Store userId for potential queries
       name: values.name,
       category: values.category,
       otherCategoryDescription: values.category === 'other' ? values.otherCategoryDescription : undefined,
@@ -305,7 +320,7 @@ export default function ProviderProfileForm() {
           notes: values.availabilityNotes || undefined,
       },
       rates: ratesData,
-      updatedAt: new Date().toISOString(), // Add timestamp
+      updatedAt: new Date().toISOString(),
     };
 
     try {
@@ -314,7 +329,7 @@ export default function ProviderProfileForm() {
         title: hasExistingProfile ? "Profile Updated!" : "Profile Saved!",
         description: "Your service provider profile has been successfully saved.",
       });
-      setHasExistingProfile(true); // Mark as existing after successful save
+      setHasExistingProfile(true); 
       router.push('/home-provider');
     } catch (error) {
       console.error("Error saving provider profile:", error);
@@ -341,16 +356,38 @@ export default function ProviderProfileForm() {
             const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`);
             if (!response.ok) throw new Error(`Nominatim API error: ${response.statusText}`);
             const data = await response.json();
-            let formattedAddress = "";
-            if (data.address) {
-              const addr = data.address;
-              const parts = [addr.road, addr.neighbourhood, addr.suburb, addr.city_district, addr.city, addr.town, addr.village, addr.county, addr.state, addr.country].filter(Boolean);
-              formattedAddress = parts.slice(0, 3).join(', '); // Take first few relevant parts
-              if (!formattedAddress && data.display_name) formattedAddress = data.display_name;
+            
+            let displayAddress = "";
+            const addr = data.address;
+
+            if (addr) {
+                const parts: string[] = [];
+                // Order of preference for address components
+                if (addr.road) parts.push(addr.road);
+                if (addr.neighbourhood) parts.push(addr.neighbourhood);
+                else if (addr.suburb) parts.push(addr.suburb);
+                
+                const cityLevel = addr.city || addr.town || addr.village || addr.city_district;
+                if (cityLevel) parts.push(cityLevel);
+
+                // Basic duplicate removal and join
+                const uniqueParts = parts.filter((part, index, self) => part && self.findIndex(p => p.toLowerCase() === part.toLowerCase()) === index);
+                
+                if (uniqueParts.length >= 2) { // Require at least two distinct parts for a good constructed address
+                    displayAddress = uniqueParts.join(', ');
+                }
             }
-            const displayAddress = formattedAddress || data.display_name || `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Please refine.`;
+
+            if (!displayAddress && data.display_name) {
+                displayAddress = data.display_name;
+            }
+            
+            if (!displayAddress) {
+                displayAddress = `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Please refine.`;
+            }
+            
             form.setValue("address", displayAddress, { shouldValidate: true });
-            toast({ title: "Location Set", description: `Address updated to: ${displayAddress}. Please verify.` });
+            toast({ title: "Location Set", description: `Address updated to: ${displayAddress}. Please verify this address.` });
           } catch (error) {
             console.error("Error reverse geocoding:", error);
             form.setValue("address", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Refine manually.`, { shouldValidate: true });
@@ -406,9 +443,12 @@ export default function ProviderProfileForm() {
                 <Select
                   onValueChange={(value) => {
                     field.onChange(value);
-                    if (value !== 'other') form.setValue('otherCategoryDescription', '');
+                    if (value !== 'other') {
+                      form.setValue('otherCategoryDescription', '');
+                      form.clearErrors('otherCategoryDescription'); // Clear error if category changes from 'other'
+                    }
                   }}
-                  value={field.value} // Ensure value is controlled
+                  value={field.value || ""} 
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -512,19 +552,30 @@ export default function ProviderProfileForm() {
                     {...field}
                   />
                 </FormControl>
-                <FormDescription>This helps clients understand your expertise.</FormDescription>
+                <FormDescription>This helps clients understand your expertise. Leave blank if your category is specific enough.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
           />
-
+          
           <FormField
             control={form.control}
             name="rateType"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Rate Structure</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
+                <Select 
+                    onValueChange={(value) => {
+                        field.onChange(value);
+                        // Clear dependent fields when rateType changes
+                        form.setValue('rateAmount', undefined);
+                        form.setValue('rateMinAmount', undefined);
+                        form.setValue('rateMaxAmount', undefined);
+                        if (value !== 'free-consultation') form.setValue('rateDetails', '');
+                        form.clearErrors(['rateAmount', 'rateMinAmount', 'rateMaxAmount', 'rateDetails']);
+                    }} 
+                    value={field.value || ""}
+                >
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select how you charge" />
@@ -551,7 +602,7 @@ export default function ProviderProfileForm() {
                   <FormItem>
                       <FormLabel>Amount (NPR)</FormLabel>
                       <FormControl>
-                      <Input type="number" placeholder="e.g., 800" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
+                      <Input type="number" placeholder="e.g., 800" {...field} value={field.value ?? ""} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
                       </FormControl>
                       <FormMessage />
                   </FormItem>
@@ -568,7 +619,7 @@ export default function ProviderProfileForm() {
                   <FormItem>
                     <FormLabel>Minimum Amount (NPR)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="e.g., 500" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
+                      <Input type="number" placeholder="e.g., 500" {...field} value={field.value ?? ""} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -581,7 +632,7 @@ export default function ProviderProfileForm() {
                   <FormItem>
                     <FormLabel>Maximum Amount (NPR)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="e.g., 1500" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
+                      <Input type="number" placeholder="e.g., 1500" {...field} value={field.value ?? ""} onChange={e => field.onChange(parseFloat(e.target.value))} min="0.01" step="0.01" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -614,6 +665,7 @@ export default function ProviderProfileForm() {
                       className="resize-none"
                       rows={3}
                       {...field}
+                      value={field.value ?? ""}
                   />
                   </FormControl>
                   <FormDescription>
@@ -674,7 +726,7 @@ export default function ProviderProfileForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Typical Daily Start Time (Optional)</FormLabel>
-                  <FormControl><Input type="time" {...field} /></FormControl>
+                  <FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -685,7 +737,7 @@ export default function ProviderProfileForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Typical Daily End Time (Optional)</FormLabel>
-                  <FormControl><Input type="time" {...field} /></FormControl>
+                  <FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -704,6 +756,7 @@ export default function ProviderProfileForm() {
                     className="resize-none"
                     rows={3}
                     {...field}
+                     value={field.value ?? ""}
                   />
                 </FormControl>
                 <FormMessage />
@@ -743,3 +796,5 @@ export default function ProviderProfileForm() {
     </>
   );
 }
+
+    
