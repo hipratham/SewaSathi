@@ -27,6 +27,17 @@ import { serviceCategories, type ServiceCategory } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Save, LocateFixed, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
+
+const daysOfWeek = [
+  { id: "Mon", label: "Mon" },
+  { id: "Tue", label: "Tue" },
+  { id: "Wed", label: "Wed" },
+  { id: "Thu", label: "Thu" },
+  { id: "Fri", label: "Fri" },
+  { id: "Sat", label: "Sat" },
+  { id: "Sun", label: "Sun" },
+] as const;
 
 const providerProfileSchema = z.object({
   name: z.string().min(2, { message: "Full name must be at least 2 characters." }),
@@ -39,8 +50,12 @@ const providerProfileSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
   servicesOffered: z.string().min(10, { message: "Describe services offered (min 10 characters)." }),
   rates: z.string().min(3, { message: "Rates description is required." }),
-  availability: z.string().min(5, { message: "Availability information is required." }),
-}).refine(data => {
+  availableDays: z.array(z.string()).nonempty({ message: "Please select at least one available day." }),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+  availabilityNotes: z.string().optional(),
+})
+.refine(data => {
   if (data.category === 'other') {
     return data.otherCategoryDescription && data.otherCategoryDescription.trim().length >= 10;
   }
@@ -48,6 +63,26 @@ const providerProfileSchema = z.object({
 }, {
   message: "Please describe your service if 'Other' is selected (min 10 characters).",
   path: ["otherCategoryDescription"],
+})
+.refine(data => {
+  if (data.startTime && !data.endTime) {
+    return false; // If startTime is provided, endTime is required
+  }
+  if (!data.startTime && data.endTime) {
+    return false; // If endTime is provided, startTime is required
+  }
+  if (data.startTime && data.endTime) {
+    // Basic time comparison: "HH:MM" format
+    const [startH, startM] = data.startTime.split(':').map(Number);
+    const [endH, endM] = data.endTime.split(':').map(Number);
+    if (endH < startH || (endH === startH && endM <= startM)) {
+      return false; // End time must be after start time
+    }
+  }
+  return true;
+}, {
+  message: "End time must be after start time. Both are required if one is provided.",
+  path: ["endTime"],
 });
 
 export default function ProviderProfileForm() {
@@ -63,7 +98,10 @@ export default function ProviderProfileForm() {
       email: "",
       servicesOffered: "",
       rates: "",
-      availability: "",
+      availableDays: [],
+      startTime: "",
+      endTime: "",
+      availabilityNotes: "",
       otherCategoryDescription: "",
     },
   });
@@ -71,14 +109,25 @@ export default function ProviderProfileForm() {
   const selectedCategory = form.watch("category");
 
   function onSubmit(values: z.infer<typeof providerProfileSchema>) {
-    console.log("Provider profile submitted:", values);
+    const availabilityData = {
+        days: values.availableDays,
+        startTime: values.startTime,
+        endTime: values.endTime,
+        notes: values.availabilityNotes,
+    }
+    const submissionData = { ...values, availability: availabilityData };
+    delete submissionData.availableDays;
+    delete submissionData.startTime;
+    delete submissionData.endTime;
+    delete submissionData.availabilityNotes;
+
+    console.log("Provider profile submitted:", submissionData);
     // In a real app, this would be an API call
-    // For now, just show a success toast
     toast({
       title: "Profile Saved!",
       description: "Your service provider profile has been submitted (mock).",
     });
-    form.reset(); // Optionally reset form
+    // form.reset(); // Optionally reset form
   }
   
   const handleUseCurrentLocation = async () => {
@@ -88,8 +137,6 @@ export default function ProviderProfileForm() {
         async (position) => {
           const { latitude, longitude } = position.coords;
           try {
-            // Use Nominatim (OpenStreetMap) for reverse geocoding
-            // https://nominatim.org/release-docs/latest/api/Reverse/
             const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`);
             if (!response.ok) {
               throw new Error(`Nominatim API error: ${response.statusText}`);
@@ -168,7 +215,7 @@ export default function ProviderProfileForm() {
                 onValueChange={(value) => {
                   field.onChange(value);
                   if (value !== 'other') {
-                    form.setValue('otherCategoryDescription', ''); // Clear if not 'other'
+                    form.setValue('otherCategoryDescription', ''); 
                   }
                 }} 
                 defaultValue={field.value}
@@ -261,7 +308,6 @@ export default function ProviderProfileForm() {
           />
         </div>
 
-
         <FormField
           control={form.control}
           name="servicesOffered"
@@ -276,7 +322,7 @@ export default function ProviderProfileForm() {
                   {...field}
                 />
               </FormControl>
-              <FormDescription>This should be a general list of services related to your chosen category. If 'Other', specify your main service in the dedicated field above.</FormDescription>
+              <FormDescription>This should be a general list of services related to your chosen category.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -299,20 +345,106 @@ export default function ProviderProfileForm() {
 
         <FormField
           control={form.control}
-          name="availability"
-          render={({ field }) => (
+          name="availableDays"
+          render={() => (
             <FormItem>
-              <FormLabel>Your Availability</FormLabel>
-              <FormControl>
-                <Input placeholder="e.g. Mon-Fri 9am-5pm, Weekends by appointment" {...field} />
-              </FormControl>
-              <FormDescription>Let customers know when you are available.</FormDescription>
+              <div className="mb-4">
+                <FormLabel className="text-base">Available Days</FormLabel>
+                <FormDescription>
+                  Select the days you are typically available.
+                </FormDescription>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {daysOfWeek.map((day) => (
+                  <FormField
+                    key={day.id}
+                    control={form.control}
+                    name="availableDays"
+                    render={({ field }) => {
+                      return (
+                        <FormItem
+                          key={day.id}
+                          className="flex flex-row items-start space-x-3 space-y-0"
+                        >
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value?.includes(day.id)}
+                              onCheckedChange={(checked) => {
+                                return checked
+                                  ? field.onChange([...(field.value || []), day.id])
+                                  : field.onChange(
+                                      (field.value || []).filter(
+                                        (value) => value !== day.id
+                                      )
+                                    );
+                              }}
+                            />
+                          </FormControl>
+                          <FormLabel className="font-normal">
+                            {day.label}
+                          </FormLabel>
+                        </FormItem>
+                      );
+                    }}
+                  />
+                ))}
+              </div>
               <FormMessage />
             </FormItem>
           )}
         />
-        <Button type="submit" className="w-full text-lg py-6">
-          <Save className="mr-2 h-5 w-5" /> Save Profile
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <FormField
+            control={form.control}
+            name="startTime"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Typical Daily Start Time (Optional)</FormLabel>
+                <FormControl>
+                  <Input type="time" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="endTime"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Typical Daily End Time (Optional)</FormLabel>
+                <FormControl>
+                  <Input type="time" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+        
+        <FormField
+          control={form.control}
+          name="availabilityNotes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Additional Availability Notes (Optional)</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="e.g., Weekends by appointment only, Not available on public holidays"
+                  className="resize-none"
+                  rows={3}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <Button type="submit" className="w-full text-lg py-6" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="mr-2 h-5 w-5" />} 
+          Save Profile
         </Button>
       </form>
     </Form>

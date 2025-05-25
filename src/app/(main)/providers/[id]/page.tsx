@@ -1,10 +1,10 @@
 
-"use client"; // Required for hooks like useState, useEffect
+"use client"; 
 
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import { mockServiceProviders } from "@/lib/mock-data";
-import type { ServiceProvider, Review as ReviewType } from "@/lib/types";
+import type { ServiceProvider, Review as ReviewType, ServiceProviderAvailability } from "@/lib/types";
 import ServiceCategoryIcon from "@/components/icons/service-category-icon";
 import ReviewCard from "@/components/reviews/review-card";
 import ReviewSummary from "@/components/reviews/review-summary";
@@ -16,6 +16,28 @@ import { Star, MapPin, Phone, Mail, Clock, MessageSquarePlus, DollarSign } from 
 import { Separator } from "@/components/ui/separator";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+
+const formatAvailabilityForProfile = (availability?: ServiceProviderAvailability): string => {
+  if (!availability) return "Not specified";
+  let mainParts: string[] = [];
+  if (availability.days && availability.days.length > 0) {
+    mainParts.push(`Days: ${availability.days.join(', ')}`);
+  }
+  if (availability.startTime && availability.endTime) {
+    mainParts.push(`Hours: ${availability.startTime} - ${availability.endTime}`);
+  } else if (availability.startTime) {
+    mainParts.push(`Starts: ${availability.startTime}`);
+  } else if (availability.endTime) {
+    mainParts.push(`Ends by: ${availability.endTime}`);
+  }
+  
+  let fullString = mainParts.join(' | ');
+  if (availability.notes) {
+    fullString += (fullString ? '. ' : '') + `Notes: ${availability.notes}`;
+  }
+  return fullString || "Availability details not fully specified.";
+};
+
 
 export default function ProviderProfilePage() {
   const params = useParams();
@@ -35,24 +57,21 @@ export default function ProviderProfilePage() {
   const handleReviewSubmit = (newReviewData: { userName: string; rating: number; comment: string }) => {
     if (!provider) return;
     const newReview: ReviewType = {
-      id: `review-${Date.now()}`, // Simple unique ID for mock
-      userId: 'currentUser', // Mock current user
+      id: `review-${Date.now()}`, 
+      userId: 'currentUser', 
       userName: newReviewData.userName,
       rating: newReviewData.rating,
       comment: newReviewData.comment,
       createdAt: new Date().toISOString(),
     };
-    // Update local state. In a real app, this would be an API call.
     const updatedReviews = [newReview, ...reviews];
     setReviews(updatedReviews);
     
-    // Update provider's overall rating (mock)
     const totalRating = updatedReviews.reduce((sum, review) => sum + review.rating, 0);
     const newOverallRating = updatedReviews.length > 0 ? parseFloat((totalRating / updatedReviews.length).toFixed(1)) : 0;
     
     setProvider(prev => prev ? {...prev, reviews: updatedReviews, overallRating: newOverallRating} : null);
 
-    // Also update the mockServiceProviders array if you need persistence across navigations (for demo only)
     const providerIndex = mockServiceProviders.findIndex(p => p.id === providerId);
     if (providerIndex !== -1) {
       mockServiceProviders[providerIndex].reviews = updatedReviews;
@@ -75,8 +94,8 @@ export default function ProviderProfilePage() {
           <Image
             src={provider.profileImage || "https://placehold.co/1200x400.png"}
             alt={`${provider.name} cover image`}
-            layout="fill"
-            objectFit="cover"
+            fill // Changed from layout="fill"
+            style={{objectFit:"cover"}} // Changed from objectFit="cover"
             data-ai-hint="business cover photo"
             className="bg-muted"
           />
@@ -111,7 +130,7 @@ export default function ProviderProfilePage() {
                   <p className="flex items-center"><Mail className="w-4 h-4 mr-2 text-muted-foreground" /> {provider.contactInfo.email}</p>
                 )}
                 <p className="flex items-center"><MapPin className="w-4 h-4 mr-2 text-muted-foreground" /> {provider.address}</p>
-                <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-muted-foreground" /> Availability: {provider.availability}</p>
+                <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-muted-foreground" /> Availability: {formatAvailabilityForProfile(provider.availability)}</p>
                 <p className="flex items-center"><DollarSign className="w-4 h-4 mr-2 text-muted-foreground" /> Rates: <span className="font-semibold">{provider.rates}</span></p>
               </div>
             </section>
@@ -138,7 +157,7 @@ export default function ProviderProfilePage() {
 
       {reviews && <ReviewSummary reviews={reviews} providerName={provider.name} />}
       
-      <div className="grid md:grid-cols-3 gap-8" id="reviews"> {/* Added id for linking */}
+      <div className="grid md:grid-cols-3 gap-8" id="reviews">
         <section className="md:col-span-2 space-y-6">
           <h2 className="text-2xl font-semibold text-primary flex items-center">
             <Star className="w-6 h-6 mr-2 text-primary" /> Customer Reviews

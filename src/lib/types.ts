@@ -37,6 +37,13 @@ export interface Review {
   createdAt: string; // ISO date string
 }
 
+export interface ServiceProviderAvailability {
+  days: string[]; // e.g., ["Mon", "Tue", "Wed"]
+  startTime?: string; // e.g., "09:00"
+  endTime?: string;   // e.g., "17:00"
+  notes?: string;    // e.g., "Weekends by appointment"
+}
+
 export interface ServiceProvider {
   id: string;
   name: string;
@@ -52,17 +59,18 @@ export interface ServiceProvider {
     lng: number;
   };
   rates: string; // e.g., "Rs. 500/hour", "Rs. 1000 per job"
-  availability: string; // e.g., "Mon-Fri 9am-5pm"
+  availability: ServiceProviderAvailability;
   reviews: Review[];
   overallRating: number; // Calculated average
   profileImage?: string;
-  otherCategoryDescription?: string; // Added for "Other" category
+  otherCategoryDescription?: string;
 }
 
 export interface ServiceRequest {
   id: string;
   userId: string;
-  userName: string;
+  userName:string;
+  userPhone: string;
   providerId?: string; // Assigned provider
   serviceNeeded: string;
   location: string;
