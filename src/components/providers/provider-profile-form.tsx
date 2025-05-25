@@ -25,7 +25,8 @@ import {
 } from "@/components/ui/select";
 import { serviceCategories, type ServiceCategory } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { Save, LocateFixed } from "lucide-react";
+import { Save, LocateFixed, Loader2 } from "lucide-react";
+import { useState } from "react";
 
 const providerProfileSchema = z.object({
   name: z.string().min(2, { message: "Full name must be at least 2 characters." }),
@@ -51,6 +52,7 @@ const providerProfileSchema = z.object({
 
 export default function ProviderProfileForm() {
   const { toast } = useToast();
+  const [isLocating, setIsLocating] = useState(false);
 
   const form = useForm<z.infer<typeof providerProfileSchema>>({
     resolver: zodResolver(providerProfileSchema),
@@ -77,16 +79,58 @@ export default function ProviderProfileForm() {
     form.reset(); // Optionally reset form
   }
   
-  const handleUseCurrentLocation = () => {
+  const handleUseCurrentLocation = async () => {
     if (navigator.geolocation) {
+      setIsLocating(true);
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          form.setValue("address", `Approx. Lat: ${position.coords.latitude.toFixed(3)}, Lon: ${position.coords.longitude.toFixed(3)} (Please refine your address)`);
-          toast({ title: "Location Acquired", description: "Approximate location set. Please refine your address details." });
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          try {
+            // Use Nominatim (OpenStreetMap) for reverse geocoding
+            // https://nominatim.org/release-docs/latest/api/Reverse/
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`);
+            if (!response.ok) {
+              throw new Error(`Nominatim API error: ${response.statusText}`);
+            }
+            const data = await response.json();
+            
+            let formattedAddress = "";
+            if (data.address) {
+              const addr = data.address;
+              if (addr.road) formattedAddress += addr.road;
+              if (addr.suburb) formattedAddress += (formattedAddress ? ", " : "") + addr.suburb;
+              if (addr.city_district) formattedAddress += (formattedAddress ? ", " : "") + addr.city_district;
+              else if (addr.city) formattedAddress += (formattedAddress ? ", " : "") + addr.city;
+              else if (addr.town) formattedAddress += (formattedAddress ? ", " : "") + addr.town;
+              else if (addr.village) formattedAddress += (formattedAddress ? ", " : "") + addr.village;
+              if (addr.country && (formattedAddress === "" || !formattedAddress.toLowerCase().includes(addr.country.toLowerCase()))) {
+                 formattedAddress += (formattedAddress ? ", " : "") + addr.country;
+              }
+            }
+
+            if (formattedAddress) {
+              form.setValue("address", formattedAddress, { shouldValidate: true });
+              toast({ title: "Location Set", description: `Address updated to: ${formattedAddress}. Please verify.` });
+            } else if (data.display_name) {
+              form.setValue("address", data.display_name, { shouldValidate: true });
+               toast({ title: "Location Set", description: `Address updated to: ${data.display_name}. Please verify.` });
+            }
+             else {
+              form.setValue("address", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Please refine.`, { shouldValidate: true });
+              toast({ title: "Coordinates Set", description: "Could not fetch full address. Coordinates set. Please refine." });
+            }
+          } catch (error) {
+            console.error("Error reverse geocoding:", error);
+            form.setValue("address", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Refine manually.`, { shouldValidate: true });
+            toast({ variant:"destructive", title: "Geocoding Error", description: "Could not fetch address. Using coordinates." });
+          } finally {
+            setIsLocating(false);
+          }
         },
         (error) => {
           console.error("Error getting location", error);
-          toast({ variant: "destructive", title: "Location Error", description: "Could not get current location." });
+          toast({ variant: "destructive", title: "Location Error", description: "Could not get current location. Please enter manually." });
+          setIsLocating(false);
         }
       );
     } else {
@@ -176,8 +220,8 @@ export default function ProviderProfileForm() {
                 <FormControl>
                   <Input placeholder="e.g. Kalanki, Kathmandu" {...field} />
                 </FormControl>
-                 <Button type="button" variant="outline" onClick={handleUseCurrentLocation} aria-label="Use current location">
-                  <LocateFixed className="h-5 w-5" />
+                 <Button type="button" variant="outline" onClick={handleUseCurrentLocation} aria-label="Use current location" disabled={isLocating}>
+                  {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
                 </Button>
               </div>
               <FormDescription>Provide your main operating address or service area.</FormDescription>
