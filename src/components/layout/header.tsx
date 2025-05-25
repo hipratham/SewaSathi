@@ -11,10 +11,9 @@ import { signOut as firebaseSignOut } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 
-const navLinks = [
+const baseNavLinks = [
   { href: "/", label: "Home" },
   { href: "/providers", label: "Find Providers" },
-  { href: "/request-service", label: "Request Service" },
 ];
 
 export default function Header() {
@@ -34,10 +33,15 @@ export default function Header() {
     }
   };
   
+  let dynamicNavLinks = [...baseNavLinks];
+  if (role !== 'provider') {
+    dynamicNavLinks.push({ href: "/request-service", label: "Request Service" });
+  }
+  
   const providerSpecificLinks = role === 'provider' ? [{ href: "/provider-setup", label: "My Provider Profile" }] : [];
   const dashboardLink = user ? [{ href: "/dashboard", label: "Dashboard" }] : [];
 
-  const allNavLinks = [...navLinks, ...providerSpecificLinks];
+  const allNavLinks = [...dynamicNavLinks, ...providerSpecificLinks];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -141,3 +145,5 @@ export default function Header() {
     </header>
   );
 }
+
+    

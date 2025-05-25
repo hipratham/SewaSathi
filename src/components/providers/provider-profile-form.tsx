@@ -23,11 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { serviceCategories, type ServiceCategory, type RateType, rateTypeOptions } from "@/lib/types";
+import { serviceCategories, type ServiceCategory, type RateType, rateTypeOptions, type ServiceProviderRates } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Save, LocateFixed, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useRouter } from "next/navigation";
 
 const daysOfWeek = [
   { id: "Mon", label: "Mon" },
@@ -101,7 +102,7 @@ const providerProfileSchema = z.object({
   return true;
 }, {
   message: "Minimum and Maximum amounts are required and must be positive for 'Varies' rate type.",
-  path: ["rateMinAmount"], // Could also be rateMaxAmount or a general path
+  path: ["rateMinAmount"], 
 })
 .refine(data => {
   if (data.rateType === "varies" && data.rateMinAmount && data.rateMaxAmount) {
@@ -126,6 +127,7 @@ const providerProfileSchema = z.object({
 export default function ProviderProfileForm() {
   const { toast } = useToast();
   const [isLocating, setIsLocating] = useState(false);
+  const router = useRouter();
 
   const form = useForm<z.infer<typeof providerProfileSchema>>({
     resolver: zodResolver(providerProfileSchema),
@@ -154,21 +156,21 @@ export default function ProviderProfileForm() {
   function onSubmit(values: z.infer<typeof providerProfileSchema>) {
     const availabilityData = {
         days: values.availableDays,
-        startTime: values.startTime,
-        endTime: values.endTime,
-        notes: values.availabilityNotes,
+        startTime: values.startTime || undefined, // Ensure empty strings become undefined
+        endTime: values.endTime || undefined,   // Ensure empty strings become undefined
+        notes: values.availabilityNotes || undefined,
     };
     
     const servicesArray = values.servicesOfferedDescription
       ? values.servicesOfferedDescription.split(',').map(s => s.trim()).filter(s => s.length > 0)
       : [];
 
-    const ratesData = {
+    const ratesData: ServiceProviderRates = {
         type: values.rateType,
         amount: (values.rateType === "per-hour" || values.rateType === "per-job" || values.rateType === "fixed-project") ? values.rateAmount : undefined,
         minAmount: values.rateType === "varies" ? values.rateMinAmount : undefined,
         maxAmount: values.rateType === "varies" ? values.rateMaxAmount : undefined,
-        details: values.rateDetails,
+        details: values.rateDetails || undefined,
     };
 
     const submissionData = { 
@@ -190,6 +192,7 @@ export default function ProviderProfileForm() {
       title: "Profile Saved!",
       description: "Your service provider profile has been submitted (mock).",
     });
+    router.push('/home-provider');
   }
   
   const handleUseCurrentLocation = async () => {
@@ -576,3 +579,5 @@ export default function ProviderProfileForm() {
     </Form>
   );
 }
+
+    
