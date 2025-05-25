@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/auth-context";
 import { mockServiceRequests, mockServiceProviders } from "@/lib/mock-data"; 
 import type { ServiceRequest, ServiceRequestStatus, ServiceProvider, ServiceProviderAvailability, ServiceProviderRates } from "@/lib/types";
-import { AlertCircle, CheckCircle, Clock, DollarSign, Eye, MessageSquare, XCircle, Info, LayoutDashboard, Hourglass, UserCog, UserCheck, Briefcase, FileText, Users, ListChecks, User as UserIcon } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, DollarSign, Eye, MessageSquare, XCircle, Info, LayoutDashboard, Hourglass, UserCog, UserCheck, Briefcase, FileText, Users, ListChecks, User as UserIcon, Settings, Banknote, CalendarDays } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -165,7 +165,7 @@ export default function DashboardPage() {
 
 
   if (loading) {
-    return <div className="flex justify-center items-center h-64"><Hourglass className="h-8 w-8 animate-spin text-primary" /> <p className="ml-2">Loading dashboard...</p></div>;
+    return <div className="flex justify-center items-center h-screen"><Hourglass className="h-12 w-12 animate-spin text-primary" /> <p className="ml-4 text-lg text-muted-foreground">Loading dashboard...</p></div>;
   }
 
   // ADMIN DASHBOARD
@@ -173,103 +173,117 @@ export default function DashboardPage() {
     const pendingAdminConfirmations = serviceRequests.filter(req => req.status === "awaiting_admin_confirmation");
 
     return (
-      <div className="space-y-8">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center text-2xl text-primary">
-              <UserCog className="mr-2 h-6 w-6" />
+      <div className="space-y-8 p-4 md:p-6">
+        <Card className="shadow-lg border-primary/30">
+          <CardHeader className="bg-primary/5 rounded-t-lg">
+            <CardTitle className="flex items-center text-2xl md:text-3xl text-primary">
+              <UserCog className="mr-3 h-7 w-7" />
               Admin Dashboard
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-md text-muted-foreground">
               Manage platform activities, service requests, and provider payments.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0 md:p-6">
             <Tabs defaultValue="pending-confirmations" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="pending-confirmations">Pending Confirmations</TabsTrigger>
-                <TabsTrigger value="all-requests">All Service Requests</TabsTrigger>
-                <TabsTrigger value="providers">Service Providers</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 p-1 bg-muted rounded-lg mb-6">
+                <TabsTrigger value="pending-confirmations" className="text-sm py-2.5">
+                  <Banknote className="mr-2 h-4 w-4"/>Pending Confirmations <Badge variant="destructive" className="ml-2">{pendingAdminConfirmations.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="all-requests" className="text-sm py-2.5">
+                  <ListChecks className="mr-2 h-4 w-4"/>All Service Requests
+                </TabsTrigger>
+                <TabsTrigger value="providers" className="text-sm py-2.5">
+                  <Users className="mr-2 h-4 w-4"/>Service Providers
+                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="pending-confirmations" className="mt-6">
-                <Card>
+              <TabsContent value="pending-confirmations" className="mt-0">
+                <Card className="border-accent/30 shadow-md">
                   <CardHeader>
-                    <CardTitle>Admin Fee Payment Confirmations</CardTitle>
+                    <CardTitle className="text-xl text-accent">Admin Fee Payment Confirmations</CardTitle>
                     <CardDescription>Review and confirm provider admin fee payments.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {pendingAdminConfirmations.length > 0 ? (
                       pendingAdminConfirmations.map((req) => (
-                        <Card key={req.id} className="shadow-md">
-                          <CardHeader>
-                            <CardTitle className="text-lg">Request ID: {req.id.substring(0, 8)}...</CardTitle>
-                            <CardDescription>
+                        <Card key={req.id} className="shadow-md border hover:shadow-lg transition-shadow">
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-lg text-primary-foreground bg-primary/90 px-4 py-2 rounded-t-md flex justify-between items-center">
+                              <span>Request ID: {req.id.substring(0, 8)}...</span>
+                               <Badge variant="secondary" className="capitalize bg-background text-primary font-semibold">
+                                {req.status.replace(/_/g, ' ')}
+                               </Badge>
+                            </CardTitle>
+                            <CardDescription className="pt-3 px-4 text-sm">
                               Provider: {getProviderName(req.providerId, mockServiceProviders)}
                             </CardDescription>
                           </CardHeader>
-                          <CardContent className="text-sm space-y-1">
-                            <p><span className="font-semibold">Client Need:</span> {req.clientServiceNeeded.substring(0, 100)}...</p>
-                            <p><span className="font-semibold">Provider Estimate:</span> Rs. {req.estimatedJobValueByProvider?.toFixed(2)}</p>
-                            <p><span className="font-semibold">Admin Fee (8%):</span> Rs. {req.adminFeeCalculated?.toFixed(2)}</p>
-                            <div><span className="font-semibold">Status:</span> <Badge variant="secondary" className="capitalize">{req.status.replace(/_/g, ' ')}</Badge></div>
+                          <CardContent className="text-sm space-y-2 px-4">
+                            <p><strong className="font-medium">Client Need:</strong> {req.clientServiceNeeded.substring(0, 100)}...</p>
+                            <p><strong className="font-medium">Provider Estimate:</strong> Rs. {req.estimatedJobValueByProvider?.toFixed(2)}</p>
+                            <p><strong className="font-medium">Admin Fee (8%):</strong> Rs. {req.adminFeeCalculated?.toFixed(2)}</p>
                           </CardContent>
-                          <CardFooter className="flex justify-end gap-2">
+                          <CardFooter className="flex justify-end gap-2 px-4 py-3 border-t mt-2">
                             <Button variant="default" size="sm" onClick={() => handleAdminApprovePayment(req.id)}>
-                              <CheckCircle className="mr-2 h-4 w-4" /> Approve Payment
+                              <CheckCircle className="mr-2 h-4 w-4" /> Approve
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleAdminOpenRejectDialog(req)}>
-                              <XCircle className="mr-2 h-4 w-4" /> Reject Payment
+                              <XCircle className="mr-2 h-4 w-4" /> Reject
                             </Button>
                           </CardFooter>
                         </Card>
                       ))
                     ) : (
-                      <p className="text-muted-foreground">No pending payment confirmations.</p>
+                      <Alert className="border-dashed">
+                        <AlertCircle className="h-4 w-4"/>
+                        <AlertTitle>All Clear!</AlertTitle>
+                        <AlertDescription>No pending payment confirmations.</AlertDescription>
+                      </Alert>
                     )}
                   </CardContent>
                 </Card>
               </TabsContent>
 
-              <TabsContent value="all-requests" className="mt-6">
-                <Card>
+              <TabsContent value="all-requests" className="mt-0">
+                <Card className="border-secondary/30 shadow-md">
                   <CardHeader>
-                    <CardTitle className="flex items-center">
-                        <ListChecks className="mr-2 h-5 w-5 text-primary"/> All Service Requests
+                    <CardTitle className="text-xl text-secondary-foreground flex items-center">
+                        <ListChecks className="mr-2 h-5 w-5 text-secondary"/> All Service Requests
                     </CardTitle>
                     <CardDescription>Overview of all service requests on the platform.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {serviceRequests.length > 0 ? (
                       serviceRequests.map((req) => (
-                        <Card key={req.id} className="shadow-sm border">
+                        <Card key={req.id} className="shadow-sm border hover:shadow-md transition-shadow">
                           <CardHeader className="pb-3">
                             <CardTitle className="text-md flex justify-between items-center">
-                              <span>Client: {req.clientName}</span>
+                              <span>Client: {req.clientName} (Req ID: {req.id.substring(0,8)}...)</span>
                               <Badge variant={
                                 req.status === "pending_provider_action" || req.status === "awaiting_admin_confirmation" || req.status === "pending_admin_fee" ? "secondary" :
                                 req.status === "accepted_by_provider" ? "default" :
                                 req.status === "rejected_by_provider" || req.status === "admin_fee_payment_rejected" ? "destructive" :
                                 req.status === "job_completed" || req.status === "request_completed" ? "outline" : "default"
-                              } className="capitalize text-xs">
+                              } className="capitalize text-xs px-2 py-0.5">
                                 {req.status.replace(/_/g, ' ')}
                               </Badge>
                             </CardTitle>
-                            <CardDescription className="text-xs">
-                              Requested: {new Date(req.requestedAt).toLocaleString()} | Request ID: {req.id.substring(0,8)}...
+                            <CardDescription className="text-xs mt-1">
+                              <CalendarDays className="inline h-3.5 w-3.5 mr-1"/> Requested: {new Date(req.requestedAt).toLocaleString()}
                             </CardDescription>
                           </CardHeader>
-                          <CardContent className="text-sm space-y-1">
+                          <CardContent className="text-sm space-y-1.5">
                             <p><strong className="font-medium">Service Needed:</strong> {req.clientServiceNeeded}</p>
                             <p><strong className="font-medium">Client Contact:</strong> {req.clientPhone} | <strong className="font-medium">Address:</strong> {req.clientAddress}</p>
-                            <Separator className="my-2"/>
+                            <Separator className="my-2.5"/>
                             <p><strong className="font-medium">Assigned Provider:</strong> {getProviderName(req.providerId, mockServiceProviders)}</p>
                             {req.estimatedJobValueByProvider != null && <p><strong className="font-medium">Provider Estimate:</strong> Rs. {req.estimatedJobValueByProvider.toFixed(2)}</p>}
                             {req.adminFeeCalculated != null && <p><strong className="font-medium">Admin Fee:</strong> Rs. {req.adminFeeCalculated.toFixed(2)} (Paid: {req.adminFeePaid ? <CheckCircle className="inline h-4 w-4 text-green-600" /> : <XCircle className="inline h-4 w-4 text-red-600" />})</p>}
                             {req.status === 'admin_fee_payment_rejected' && req.adminRejectionReason && (
-                              <Alert variant="destructive" className="mt-2 text-xs p-2">
+                              <Alert variant="destructive" className="mt-2 text-xs p-3 rounded-md">
                                 <AlertCircle className="h-4 w-4" />
-                                <AlertTitle className="text-sm">Payment Rejected by Admin</AlertTitle>
+                                <AlertTitle className="text-sm font-semibold">Payment Rejected by Admin</AlertTitle>
                                 <AlertDescription>Reason: {req.adminRejectionReason}</AlertDescription>
                               </Alert>
                             )}
@@ -277,33 +291,37 @@ export default function DashboardPage() {
                         </Card>
                       ))
                     ) : (
-                      <p className="text-muted-foreground">No service requests found.</p>
+                       <Alert className="border-dashed">
+                        <ListChecks className="h-4 w-4"/>
+                        <AlertTitle>No Requests Yet</AlertTitle>
+                        <AlertDescription>No service requests found on the platform.</AlertDescription>
+                      </Alert>
                     )}
                   </CardContent>
                 </Card>
               </TabsContent>
 
-              <TabsContent value="providers" className="mt-6">
-                <Card>
+              <TabsContent value="providers" className="mt-0">
+                <Card className="border-secondary/30 shadow-md">
                   <CardHeader>
-                     <CardTitle className="flex items-center">
-                        <Users className="mr-2 h-5 w-5 text-primary"/>All Service Providers
+                     <CardTitle className="text-xl text-secondary-foreground flex items-center">
+                        <Users className="mr-2 h-5 w-5 text-secondary"/>All Service Providers
                     </CardTitle>
                     <CardDescription>Overview of registered service providers.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {mockServiceProviders.length > 0 ? (
                       mockServiceProviders.map((provider) => (
-                        <Card key={provider.id} className="shadow-sm border">
+                        <Card key={provider.id} className="shadow-sm border hover:shadow-md transition-shadow">
                           <CardHeader className="pb-3">
-                            <CardTitle className="text-lg flex items-center">
-                              <UserIcon className="mr-2 h-5 w-5 text-primary" /> {provider.name}
+                            <CardTitle className="text-lg flex items-center text-primary">
+                              <UserIcon className="mr-2 h-5 w-5" /> {provider.name}
                             </CardTitle>
-                            <CardDescription className="text-xs">
+                            <CardDescription className="text-xs mt-1">
                               Category: {provider.category}{provider.category === 'other' && provider.otherCategoryDescription ? ` (${provider.otherCategoryDescription})` : ''} | ID: {provider.id.substring(0,15)}...
                             </CardDescription>
                           </CardHeader>
-                          <CardContent className="text-sm space-y-1">
+                          <CardContent className="text-sm space-y-1.5">
                             <p><strong className="font-medium">Contact:</strong> {provider.contactInfo.phone} / {provider.contactInfo.email}</p>
                             <p><strong className="font-medium">Address:</strong> {provider.address}</p>
                             {provider.servicesOffered && provider.servicesOffered.length > 0 && (
@@ -313,15 +331,19 @@ export default function DashboardPage() {
                             <div><strong className="font-medium">Rates:</strong> {formatRatesForAdmin(provider.rates)}</div>
                             <p><strong className="font-medium">Rating:</strong> {provider.overallRating.toFixed(1)} ({provider.reviews.length} reviews)</p>
                           </CardContent>
-                          <CardFooter>
+                          <CardFooter className="border-t mt-2 py-3">
                             <Button variant="outline" size="sm" asChild>
-                              <Link href={`/providers/${provider.id}`}>View Full Public Profile</Link>
+                              <Link href={`/providers/${provider.id}`} className="flex items-center"> <Eye className="mr-2 h-4 w-4"/> View Full Public Profile</Link>
                             </Button>
                           </CardFooter>
                         </Card>
                       ))
                     ) : (
-                      <p className="text-muted-foreground">No service providers found.</p>
+                       <Alert className="border-dashed">
+                        <Users className="h-4 w-4"/>
+                        <AlertTitle>No Providers Yet</AlertTitle>
+                        <AlertDescription>No service providers found on the platform.</AlertDescription>
+                      </Alert>
                     )}
                   </CardContent>
                 </Card>
@@ -332,21 +354,22 @@ export default function DashboardPage() {
 
         {/* Dialog for Admin to reject payment */}
         <Dialog open={!!requestToReject} onOpenChange={(isOpen) => { if (!isOpen) setRequestToReject(null); }}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Reject Admin Fee Payment</DialogTitle>
+              <DialogTitle className="text-xl">Reject Admin Fee Payment</DialogTitle>
               <DialogDescription>
                 Provide a reason for rejecting the payment for request ID: {requestToReject?.id.substring(0,8)}...
                 (Provider: {getProviderName(requestToReject?.providerId, mockServiceProviders)})
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <Label htmlFor="rejectionReason">Rejection Reason</Label>
+              <Label htmlFor="rejectionReason" className="font-semibold">Rejection Reason</Label>
               <Textarea
                 id="rejectionReason"
                 value={adminRejectionReasonInput}
                 onChange={(e) => setAdminRejectionReasonInput(e.target.value)}
                 placeholder="e.g., Payment not reflected, screenshot unclear, etc."
+                className="min-h-[100px]"
               />
             </div>
             <DialogFooter>
@@ -363,32 +386,32 @@ export default function DashboardPage() {
   // PROVIDER DASHBOARD
   if (role === 'provider') {
     const recentRequests = serviceRequests.filter(
-      req => req.status === "pending_provider_action" || req.status === "pending_admin_fee" || req.status === "awaiting_admin_confirmation" || req.status === "admin_fee_payment_rejected"
+      req => req.providerId === user?.uid && (req.status === "pending_provider_action" || req.status === "pending_admin_fee" || req.status === "awaiting_admin_confirmation" || req.status === "admin_fee_payment_rejected")
     ).slice(0, 5); 
 
     const workHistory = serviceRequests.filter(
-      req => req.status === "job_completed" || req.status === "request_completed" ||  req.status === "rejected_by_provider"
+      req => req.providerId === user?.uid && (req.status === "job_completed" || req.status === "request_completed" ||  req.status === "rejected_by_provider")
     ).slice(0, 5); 
 
     return (
-      <div className="space-y-8">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center text-2xl text-primary">
-              <LayoutDashboard className="mr-2 h-6 w-6" />
+      <div className="space-y-8 p-4 md:p-6">
+        <Card className="shadow-lg border-primary/30">
+          <CardHeader className="bg-primary/5 rounded-t-lg">
+            <CardTitle className="flex items-center text-2xl md:text-3xl text-primary">
+              <LayoutDashboard className="mr-3 h-7 w-7" />
               Provider Dashboard
             </CardTitle>
-            <CardDescription>Manage your service requests and profile.</CardDescription>
+            <CardDescription className="text-md text-muted-foreground">Manage your service requests and profile.</CardDescription>
           </CardHeader>
         </Card>
 
         <section>
-          <h2 className="text-xl font-semibold mb-4 text-foreground/90">Recent Service Requests</h2>
+          <h2 className="text-xl font-semibold mb-4 text-foreground/90 flex items-center"><Briefcase className="mr-2 h-5 w-5 text-primary"/>Recent Service Requests</h2>
           {recentRequests.length > 0 ? (
             <div className="space-y-4">
               {recentRequests.map((req) => (
-                <Card key={req.id} className="shadow-md hover:shadow-lg transition-shadow">
-                  <CardHeader>
+                <Card key={req.id} className="shadow-md hover:shadow-lg transition-shadow border">
+                  <CardHeader className="pb-3">
                     <CardTitle className="text-lg text-primary flex justify-between items-center">
                       <span>Request: {req.clientServiceNeeded.substring(0, 50)}...</span>
                        <Badge variant={
@@ -396,37 +419,40 @@ export default function DashboardPage() {
                         req.status === "pending_admin_fee" ? "secondary" :
                         req.status === "awaiting_admin_confirmation" ? "outline" : 
                         req.status === "admin_fee_payment_rejected" ? "destructive" : "default"
-                       } className="capitalize">
+                       } className="capitalize text-xs px-2 py-0.5">
                         {req.status.replace(/_/g, ' ')}
                        </Badge>
                     </CardTitle>
-                    <CardDescription className="text-sm text-muted-foreground">
+                    <CardDescription className="text-sm text-muted-foreground mt-1">
                       <Clock className="inline h-4 w-4 mr-1" /> Requested: {new Date(req.requestedAt).toLocaleString()} <br />
                       <Info className="inline h-4 w-4 mr-1" /> Category: {req.serviceCategory || "N/A"} <br/>
                       Client Name (Initial): {req.clientName.split(' ')[0]}...
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-sm mb-1"><span className="font-semibold">Location:</span> {req.clientAddress}</p>
-                    <p className="text-sm"><span className="font-semibold">Needs:</span> {req.clientServiceNeeded}</p>
+                  <CardContent className="text-sm">
+                    <p className="mb-1"><strong className="font-medium">Location:</strong> {req.clientAddress}</p>
+                    <p><strong className="font-medium">Needs:</strong> {req.clientServiceNeeded}</p>
                     
                     {req.status === "admin_fee_payment_rejected" && req.adminRejectionReason && (
-                        <Alert variant="destructive" className="mt-3">
+                        <Alert variant="destructive" className="mt-3 p-3 rounded-md">
                             <AlertCircle className="h-4 w-4" />
-                            <AlertTitle>Admin Fee Rejection</AlertTitle>
-                            <AlertDescription>Reason: {req.adminRejectionReason}. Please contact admin or try payment again if applicable.</AlertDescription>
+                            <AlertTitle className="font-semibold">Admin Fee Rejection</AlertTitle>
+                            <AlertDescription className="text-xs">Reason: {req.adminRejectionReason}. Please contact admin or try payment again if applicable.</AlertDescription>
                         </Alert>
                     )}
                     {req.status === "accepted_by_provider" && (
-                       <div className="mt-3 pt-3 border-t">
-                          <h4 className="font-semibold text-md text-green-600">Client Contact Details:</h4>
-                          <p className="text-sm">Name: {req.clientName}</p>
-                          <p className="text-sm">Phone: {req.clientPhone}</p>
-                          <p className="text-sm">Address: {req.clientAddress}</p>
-                       </div>
+                       <Alert variant="default" className="mt-3 p-3 rounded-md bg-green-50 border-green-300">
+                          <CheckCircle className="h-4 w-4 text-green-600"/>
+                          <AlertTitle className="font-semibold text-green-700">Client Contact Details Unlocked</AlertTitle>
+                          <AlertDescription className="text-green-600 text-xs">
+                            Name: {req.clientName} <br/>
+                            Phone: {req.clientPhone} <br/>
+                            Address: {req.clientAddress}
+                          </AlertDescription>
+                       </Alert>
                     )}
                   </CardContent>
-                  <CardFooter className="flex justify-end gap-2">
+                  <CardFooter className="flex justify-end gap-2 border-t pt-3 mt-2">
                     {req.status === "pending_provider_action" && (
                       <>
                         <DialogTrigger asChild>
@@ -449,43 +475,47 @@ export default function DashboardPage() {
                       </Button>
                     )}
                     {req.status === "awaiting_admin_confirmation" && (
-                       <p className="text-sm text-muted-foreground flex items-center">
-                         <Hourglass className="mr-2 h-4 w-4 animate-pulse" /> Waiting for admin to confirm fee payment...
-                       </p>
+                       <div className="text-sm text-muted-foreground flex items-center p-2 bg-amber-50 border border-amber-200 rounded-md">
+                         <Hourglass className="mr-2 h-4 w-4 animate-pulse text-amber-600" /> Waiting for admin to confirm fee payment...
+                       </div>
                     )}
                   </CardFooter>
                 </Card>
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground">No new service requests at the moment.</p>
+             <Alert className="border-dashed">
+              <Briefcase className="h-4 w-4"/>
+              <AlertTitle>No New Requests</AlertTitle>
+              <AlertDescription>No new service requests assigned to you at the moment.</AlertDescription>
+            </Alert>
           )}
         </section>
 
-        <Separator />
+        <Separator className="my-8"/>
 
         <section>
-          <h2 className="text-xl font-semibold mb-4 text-foreground/90">Work History</h2>
+          <h2 className="text-xl font-semibold mb-4 text-foreground/90 flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Work History</h2>
           {workHistory.length > 0 ? (
             <div className="space-y-4">
               {workHistory.map((req) => (
-                <Card key={req.id} className="bg-card/70">
-                  <CardHeader>
+                <Card key={req.id} className="bg-card/70 border shadow-sm">
+                  <CardHeader className="pb-2">
                      <CardTitle className="text-md flex justify-between items-center">
                        <span>{req.clientServiceNeeded.substring(0, 50)}...</span>
-                       <Badge variant={req.status === "rejected_by_provider" ? "destructive" : "secondary"} className="capitalize">
+                       <Badge variant={req.status === "rejected_by_provider" ? "destructive" : "secondary"} className="capitalize text-xs px-2 py-0.5">
                          {req.status.replace(/_/g, ' ')}
                        </Badge>
                      </CardTitle>
-                    <CardDescription className="text-xs text-muted-foreground">
+                    <CardDescription className="text-xs text-muted-foreground mt-1">
                       Client: {req.clientName} | Completed: {new Date(req.requestedAt).toLocaleDateString()} 
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-sm">Details: {req.clientServiceNeeded}</p>
-                    {req.estimatedJobValueByProvider && <p className="text-sm">Value: Rs. {req.estimatedJobValueByProvider.toFixed(2)}</p>}
+                  <CardContent className="text-sm py-2">
+                    <p>Details: {req.clientServiceNeeded}</p>
+                    {req.estimatedJobValueByProvider && <p>Value: Rs. {req.estimatedJobValueByProvider.toFixed(2)}</p>}
                   </CardContent>
-                   <CardFooter className="flex justify-end">
+                   <CardFooter className="flex justify-end border-t pt-3 mt-2">
                       <Button variant="ghost" size="sm">
                          <Eye className="mr-2 h-4 w-4" /> View Details
                       </Button>
@@ -494,16 +524,20 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground">No completed jobs in your history yet.</p>
+            <Alert className="border-dashed">
+              <FileText className="h-4 w-4"/>
+              <AlertTitle>No Work History</AlertTitle>
+              <AlertDescription>No completed or rejected jobs in your history yet.</AlertDescription>
+            </Alert>
           )}
         </section>
 
         <Dialog open={!!selectedRequestForAccept && !showAdminFeeDialog} onOpenChange={(isOpen) => {
             if (!isOpen) setSelectedRequestForAccept(null);
         }}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Accept Service Request</DialogTitle>
+              <DialogTitle className="text-xl">Accept Service Request</DialogTitle>
               <DialogDescription>
                 Enter your estimated charge for the service: "{selectedRequestForAccept?.clientServiceNeeded.substring(0,100)}..."
                 This will be shown to the client. An 8% admin fee will be calculated based on this amount.
@@ -511,7 +545,7 @@ export default function DashboardPage() {
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="estimatedCharge" className="text-right col-span-1">
+                <Label htmlFor="estimatedCharge" className="text-right col-span-1 font-semibold">
                   Charge (Rs.)
                 </Label>
                 <Input
@@ -532,9 +566,9 @@ export default function DashboardPage() {
         </Dialog>
 
         <Dialog open={showAdminFeeDialog} onOpenChange={setShowAdminFeeDialog}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Pay Admin Fee</DialogTitle>
+                    <DialogTitle className="text-xl">Pay Admin Fee</DialogTitle>
                     <DialogDescription>
                         To finalize acceptance of the request for "{selectedRequestForAccept?.clientServiceNeeded.substring(0,100)}...", 
                         please pay the 8% admin fee of <span className="font-bold text-primary">Rs. {currentAdminFee.toFixed(2)}</span> using the eSewa QR code below.
@@ -546,7 +580,7 @@ export default function DashboardPage() {
                         alt="eSewa Admin QR Code"
                         width={200}
                         height={200}
-                        className="rounded-md border"
+                        className="rounded-md border shadow-sm"
                         data-ai-hint="QR payment"
                      />
                      <p className="text-sm text-muted-foreground">Scan with your eSewa app.</p>
@@ -564,27 +598,34 @@ export default function DashboardPage() {
 
   // SEEKER DASHBOARD (or default if role is null/unknown)
   return (
-    <div className="space-y-8">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center text-2xl text-primary">
-            <MessageSquare className="mr-2 h-6 w-6" />
+    <div className="space-y-8 p-4 md:p-6">
+      <Card className="shadow-lg border-primary/30">
+        <CardHeader className="bg-primary/5 rounded-t-lg">
+          <CardTitle className="flex items-center text-2xl md:text-3xl text-primary">
+            <MessageSquare className="mr-3 h-7 w-7" />
             User Dashboard
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-md text-muted-foreground">
             Welcome to your SewaSathi dashboard. This area is under construction for service seekers.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           <p className="text-muted-foreground">
             Here you will be able to manage your service requests, view your history, and update your profile.
           </p>
-          <div className="mt-6 p-8 border-2 border-dashed border-muted-foreground/30 rounded-lg text-center">
-            <p className="text-lg font-semibold text-muted-foreground">Coming Soon!</p>
-            <p className="text-sm text-muted-foreground">Exciting features are on their way for service seekers.</p>
+          <div className="mt-6 p-8 border-2 border-dashed border-muted-foreground/30 rounded-lg text-center bg-muted/20">
+            <Settings className="mx-auto h-12 w-12 text-muted-foreground/70 mb-4 animate-spin_slow" />
+            <p className="text-xl font-semibold text-muted-foreground">Coming Soon!</p>
+            <p className="text-sm text-muted-foreground mt-1">Exciting features are on their way for service seekers.</p>
           </div>
         </CardContent>
       </Card>
     </div>
   );
 }
+
+// Add a custom animation for slow spin to globals.css or tailwind.config.js if needed
+// For example in tailwind.config.js:
+// animation: {
+//   'spin_slow': 'spin 3s linear infinite',
+// }

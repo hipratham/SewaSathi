@@ -82,11 +82,17 @@ export default {
   				to: {
   					height: '0'
   				}
-  			}
+  			},
+          'spin_slow': { // Added for slow spin
+            'to': {
+              transform: 'rotate(360deg)'
+            }
+          }
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+        'spin_slow': 'spin_slow 3s linear infinite', // Added for slow spin
   		}
   	}
   },
