@@ -13,7 +13,7 @@ const firebaseConfig = {
   appId: "1:435729160797:web:06be7d7d52319271048bb4",
   measurementId: "G-SEH6GJJM97",
   // The databaseURL is required for Realtime Database
-  databaseURL: "https://sewasathi-1076b-default-rtdb.firebaseio.com"
+  databaseURL: "https://sewasathi-1076b-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
 let app: FirebaseApp;
