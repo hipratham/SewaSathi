@@ -62,7 +62,7 @@ const providerProfileSchema = z.object({
   address: z.string().min(5, { message: "Address must be at least 5 characters." }),
   phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }),
   email: z.string().email({ message: "Invalid email address." }),
-  servicesOfferedDescription: z.string().optional(), 
+  servicesOfferedDescription: z.string().optional(),
   rateType: z.custom<RateType>((val) => rateTypeOptions.map(rt => rt.value).includes(val as RateType), {
     message: "Please select a valid rate type.",
   }),
@@ -87,17 +87,18 @@ const providerProfileSchema = z.object({
 .refine(data => {
   const startTimeProvided = !!data.startTime;
   const endTimeProvided = !!data.endTime;
-  if (startTimeProvided !== endTimeProvided) return false; 
-  
+  if (startTimeProvided && !endTimeProvided) return false; // If start is given, end must be given
+  if (!startTimeProvided && endTimeProvided) return false; // If end is given, start must be given
+
   if (startTimeProvided && endTimeProvided && data.startTime && data.endTime) {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
-    if (endH < startH || (endH === startH && endM <= startM)) return false;
+    if (endH < startH || (endH === startH && endM <= startM)) return false; // End must be after start
   }
   return true;
 }, {
   message: "End time must be after start time. Both start and end times are required if one is provided, or leave both blank.",
-  path: ["endTime"], 
+  path: ["endTime"],
 })
 .refine(data => {
   const amountRequiredTypes: RateType[] = ["per-hour", "per-job", "fixed-project"];
@@ -117,7 +118,7 @@ const providerProfileSchema = z.object({
   return true;
 }, {
   message: "Minimum and Maximum amounts are required and must be positive for 'Varies' rate type.",
-  path: ["rateMinAmount"], 
+  path: ["rateMinAmount"],
 })
 .refine(data => {
   if (data.rateType === "varies" && data.rateMinAmount && data.rateMaxAmount) {
@@ -166,26 +167,24 @@ function formatCurrentValuesForDialog(values: ProviderProfileFormValues, fieldLa
     (Object.keys(values) as Array<keyof ProviderProfileFormValues>).forEach(key => {
         const label = fieldLabels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
         let value = values[key];
-        
+
         const isOptionalRateAmount = (key === 'rateAmount' && !["per-hour", "per-job", "fixed-project"].includes(values.rateType));
         const isOptionalMinMax = ((key === 'rateMinAmount' || key === 'rateMaxAmount') && values.rateType !== 'varies');
         const isOptionalOtherDesc = (key === 'otherCategoryDescription' && values.category !== 'other');
-        const isOptionalRateDetails = (key === 'rateDetails' && values.rateType !== 'free-consultation'); // Only strictly required for free consultation
+        const isOptionalRateDetails = (key === 'rateDetails' && values.rateType !== 'free-consultation');
 
 
         if (value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0)) {
-             // Explicitly show "Not set" for optional fields that are empty, rather than omitting them entirely
-            if (key === 'servicesOfferedDescription' || 
-                key === 'otherCategoryDescription' || 
-                key === 'rateAmount' || 
-                key === 'rateMinAmount' || 
-                key === 'rateMaxAmount' || 
-                key === 'rateDetails' || 
-                key === 'startTime' || 
-                key === 'endTime' || 
-                key === 'availabilityNotes') 
+            if (key === 'servicesOfferedDescription' ||
+                key === 'otherCategoryDescription' ||
+                key === 'rateAmount' ||
+                key === 'rateMinAmount' ||
+                key === 'rateMaxAmount' ||
+                key === 'rateDetails' ||
+                key === 'startTime' ||
+                key === 'endTime' ||
+                key === 'availabilityNotes')
             {
-                 // Check if the field should have been set based on other conditions
                  if (isOptionalOtherDesc && values.category !== 'other') { /* omit */ }
                  else if (isOptionalRateAmount && !["per-hour", "per-job", "fixed-project"].includes(values.rateType)) { /* omit */ }
                  else if (isOptionalMinMax && values.rateType !== 'varies') { /* omit */ }
@@ -242,8 +241,8 @@ export default function ProviderProfileForm() {
       address: "",
       phone: "",
       email: "",
-      servicesOfferedDescription: "", 
-      rateType: "varies", 
+      servicesOfferedDescription: "",
+      rateType: "varies",
       rateAmount: undefined,
       rateMinAmount: undefined,
       rateMaxAmount: undefined,
@@ -267,11 +266,10 @@ export default function ProviderProfileForm() {
         if (snapshot.exists()) {
           const dbData = snapshot.val();
           const formData = mapDbDataToForm(dbData);
-          form.reset(formData); 
+          form.reset(formData);
           setHasExistingProfile(true);
         } else {
           setHasExistingProfile(false);
-          // Pre-fill from auth user if available and no profile exists
           if(user.email) form.setValue('email', user.email, { shouldValidate: true });
           if(user.displayName) form.setValue('name', user.displayName, { shouldValidate: true });
         }
@@ -283,9 +281,10 @@ export default function ProviderProfileForm() {
         setIsLoadingData(false);
       });
     } else {
-      setIsLoadingData(false); 
+      setIsLoadingData(false);
+      router.push('/auth/signin'); // Redirect if not logged in
     }
-  }, [user, form, toast]);
+  }, [user, form, toast, router]);
 
 
   async function handleActualSave() {
@@ -303,35 +302,46 @@ export default function ProviderProfileForm() {
 
     const ratesData: ServiceProviderRates = {
         type: values.rateType,
-        amount: (values.rateType === "per-hour" || values.rateType === "per-job" || values.rateType === "fixed-project") ? values.rateAmount : undefined,
-        minAmount: values.rateType === "varies" ? values.rateMinAmount : undefined,
-        maxAmount: values.rateType === "varies" ? values.rateMaxAmount : undefined,
-        details: values.rateDetails || undefined,
+        amount: (values.rateType === "per-hour" || values.rateType === "per-job" || values.rateType === "fixed-project") ? values.rateAmount : null,
+        minAmount: values.rateType === "varies" ? values.rateMinAmount : null,
+        maxAmount: values.rateType === "varies" ? values.rateMaxAmount : null,
+        details: values.rateDetails || null,
     };
 
-    const submissionData = {
-      userId: user.uid, 
+    const submissionData: any = { // Using any temporarily to build object conditionally
+      userId: user.uid,
       name: values.name,
       category: values.category,
-      otherCategoryDescription: values.category === 'other' ? values.otherCategoryDescription : undefined,
       address: values.address,
       contactInfo: {
         phone: values.phone,
         email: values.email,
       },
-      servicesOffered: servicesArray, // This is an array of strings
+      servicesOffered: servicesArray,
       availability: {
           days: values.availableDays,
-          startTime: values.startTime || undefined,
-          endTime: values.endTime || undefined,
-          notes: values.availabilityNotes || undefined,
+          startTime: values.startTime || null,
+          endTime: values.endTime || null,
+          notes: values.availabilityNotes || null,
       },
-      rates: ratesData,
+      rates: {
+        type: values.rateType,
+        details: values.rateDetails || null,
+      },
       updatedAt: new Date().toISOString(),
-      // Ensure all other fields from ServiceProvider type are included if needed
-      // For example, if profileImage is part of the form, add it here
-      // reviews and overallRating are usually managed elsewhere or derived
     };
+
+    if (values.category === 'other') {
+        submissionData.otherCategoryDescription = values.otherCategoryDescription || "";
+    }
+
+    if (ratesData.type === "per-hour" || ratesData.type === "per-job" || ratesData.type === "fixed-project") {
+        submissionData.rates.amount = values.rateAmount;
+    } else if (ratesData.type === "varies") {
+        submissionData.rates.minAmount = values.rateMinAmount;
+        submissionData.rates.maxAmount = values.rateMaxAmount;
+    }
+
 
     try {
       await set(ref(database, `providerProfiles/${user.uid}`), submissionData);
@@ -339,7 +349,7 @@ export default function ProviderProfileForm() {
         title: hasExistingProfile ? "Profile Updated!" : "Profile Saved!",
         description: "Your service provider profile has been successfully saved.",
       });
-      setHasExistingProfile(true); 
+      setHasExistingProfile(true);
       router.push('/home-provider');
     } catch (error: any) {
       console.error("Error saving provider profile:", error);
@@ -366,7 +376,7 @@ export default function ProviderProfileForm() {
             const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`);
             if (!response.ok) throw new Error(`Nominatim API error: ${response.statusText}`);
             const data = await response.json();
-            
+
             let displayAddress = "";
             const addr = data.address;
 
@@ -375,41 +385,41 @@ export default function ProviderProfileForm() {
                 if (addr.road) parts.push(addr.road);
                 const locality = addr.neighbourhood || addr.suburb || addr.quarter;
                 if (locality) parts.push(locality);
-                
+
                 const cityLevel = addr.city || addr.town || addr.village || addr.city_district;
                 if (cityLevel && !parts.some(p => p.toLowerCase() === cityLevel.toLowerCase())) parts.push(cityLevel);
-                
+
                 const country = addr.country;
                  if (country && parts.length > 0 && !parts.some(p => p.toLowerCase() === country.toLowerCase())) parts.push(country);
 
 
                 const uniqueParts = parts.filter((part, index, self) => part && self.findIndex(p => p.toLowerCase().trim() === part.toLowerCase().trim()) === index);
-                
-                if (uniqueParts.length > 1) { // Prefer constructed address if it has at least two parts
+
+                if (uniqueParts.length > 1) {
                     displayAddress = uniqueParts.join(', ');
-                } else if (data.display_name) { // Fallback to full display_name
+                } else if (data.display_name) {
                     displayAddress = data.display_name;
                 }
             } else if (data.display_name) {
                  displayAddress = data.display_name;
             }
-            
+
             if (!displayAddress) {
-                displayAddress = `Approx. Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Please verify & refine.`;
+                displayAddress = `Approx. Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. IMPORTANT: Please verify & refine.`;
             }
-            
+
             form.setValue("address", displayAddress, { shouldValidate: true });
-            toast({ 
-              title: "Location Approximated", 
+            toast({
+              title: "Location Approximated",
               description: `Address set to: "${displayAddress}". IMPORTANT: Please verify this address and correct it if needed. Geolocation can be imprecise.`,
-              duration: 9000, 
+              duration: 9000,
             });
           } catch (error) {
             console.error("Error reverse geocoding:", error);
             form.setValue("address", `Lat: ${latitude.toFixed(3)}, Lon: ${longitude.toFixed(3)}. Could not fetch address; please enter manually and verify.`, { shouldValidate: true });
-            toast({ 
-                variant:"destructive", 
-                title: "Geocoding Error", 
+            toast({
+                variant:"destructive",
+                title: "Geocoding Error",
                 description: "Could not fetch address details. Using coordinates. IMPORTANT: Please enter manually and verify.",
                 duration: 9000,
             });
@@ -419,9 +429,9 @@ export default function ProviderProfileForm() {
         },
         (error) => {
           console.error("Error getting location", error);
-          toast({ 
-            variant: "destructive", 
-            title: "Location Access Error", 
+          toast({
+            variant: "destructive",
+            title: "Location Access Error",
             description: "Could not get current location. Please ensure location services are enabled and permissions are granted, then try again or enter manually.",
             duration: 9000,
           });
@@ -429,9 +439,9 @@ export default function ProviderProfileForm() {
         }
       );
     } else {
-      toast({ 
-        variant: "destructive", 
-        title: "Location Error", 
+      toast({
+        variant: "destructive",
+        title: "Location Error",
         description: "Geolocation is not supported by your browser. Please enter your address manually.",
         duration: 9000,
       });
@@ -476,10 +486,10 @@ export default function ProviderProfileForm() {
                     field.onChange(value);
                     if (value !== 'other') {
                       form.setValue('otherCategoryDescription', '');
-                      form.clearErrors('otherCategoryDescription'); 
+                      form.clearErrors('otherCategoryDescription');
                     }
                   }}
-                  value={field.value || ""} 
+                  value={field.value || ""}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -590,24 +600,24 @@ export default function ProviderProfileForm() {
               </FormItem>
             )}
           />
-          
+
           <FormField
             control={form.control}
             name="rateType"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Rate Structure</FormLabel>
-                <Select 
+                <Select
                     onValueChange={(value) => {
                         field.onChange(value);
-                        // Reset conditional rate fields when type changes
                         form.setValue('rateAmount', undefined);
                         form.setValue('rateMinAmount', undefined);
                         form.setValue('rateMaxAmount', undefined);
-                        // Don't reset rateDetails if it's free-consultation, otherwise do.
-                        if (value !== 'free-consultation') form.setValue('rateDetails', '');
+                        if (value !== 'free-consultation' && value !== 'varies') {
+                           form.setValue('rateDetails', '');
+                        }
                         form.clearErrors(['rateAmount', 'rateMinAmount', 'rateMaxAmount', 'rateDetails']);
-                    }} 
+                    }}
                     value={field.value || ""}
                 >
                   <FormControl>
@@ -684,8 +694,8 @@ export default function ProviderProfileForm() {
                       {selectedRateType === "free-consultation"
                           ? "Describe Free Consultation (Required)"
                           : selectedRateType === "varies"
-                          ? "Optional: Further explanation for varied rates (e.g., factors affecting price)"
-                          : "Optional: Additional notes about your rate (e.g., minimum charges, travel fees)"}
+                          ? "Optional: Explanation for varied rates (e.g., factors affecting price)"
+                          : "Optional: Additional Rate Notes"}
                   </FormLabel>
                   <FormControl>
                   <Textarea
@@ -811,14 +821,17 @@ export default function ProviderProfileForm() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Profile {hasExistingProfile ? "Update" : "Creation"}</AlertDialogTitle>
-            <AlertDialogDescription className="max-h-60 overflow-y-auto">
+             {/* Fix: Ensure ul is not a descendant of AlertDialogDescription which renders as <p> */}
+            <AlertDialogDescription>
               Please review your information before saving:
-              <ul className="mt-2 space-y-1 text-sm text-foreground list-disc list-inside">
-                {confirmationSummary.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
             </AlertDialogDescription>
+            <div className="max-h-60 overflow-y-auto text-sm">
+                <ul className="mt-2 space-y-1 text-foreground list-disc list-inside">
+                    {confirmationSummary.map((item, index) => (
+                    <li key={index}>{item}</li>
+                    ))}
+                </ul>
+            </div>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
@@ -832,5 +845,3 @@ export default function ProviderProfileForm() {
     </>
   );
 }
-
-    
