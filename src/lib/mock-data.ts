@@ -1,5 +1,5 @@
 
-import type { ServiceProvider, Review, ServiceCategory, ServiceProviderAvailability } from "./types";
+import type { ServiceProvider, Review, ServiceProviderAvailability, ServiceProviderRates } from "./types";
 
 const generateReviews = (providerName: string): Review[] => [
   {
@@ -34,61 +34,84 @@ const calculateOverallRating = (reviews: Review[]): number => {
   return parseFloat((totalRating / reviews.length).toFixed(1));
 };
 
+// Temporary type for raw mock data before full processing
+interface RawProviderData {
+  name: string;
+  category: ServiceProvider['category'];
+  servicesOfferedArray: string[]; // Changed from servicesOffered (string)
+  contactInfo: ServiceProvider['contactInfo'];
+  address: string;
+  location?: ServiceProvider['location'];
+  ratesObject: ServiceProviderRates; // Changed from rates (string)
+  availabilityString: string;
+  profileImage?: string;
+}
 
-const mockProvidersData: Omit<ServiceProvider, 'overallRating' | 'reviews' | 'id' | 'availability'> & { availabilityString: string }[] = [
+
+const mockProvidersRawData: RawProviderData[] = [
   {
     name: "Ramesh Plumbing Services",
     category: "plumber",
-    servicesOffered: ["Leak Repair", "Pipe Installation", "Drain Cleaning"],
+    servicesOfferedArray: ["Leak Repair", "Pipe Installation", "Drain Cleaning"],
     contactInfo: { phone: "98XXXXXXXX", email: "ramesh.plumbing@example.com" },
     address: "Kupondole, Lalitpur",
     location: { lat: 27.6868, lng: 85.3187 },
-    rates: "Rs. 800 per hour",
+    ratesObject: { type: "per-hour", amount: 800, details: "Minimum 1 hour charge." },
     availabilityString: "Mon-Sat, 9 AM - 6 PM",
     profileImage: "https://placehold.co/300x300.png?text=RP",
   },
   {
     name: "Sita's Electrical Works",
     category: "electrician",
-    servicesOffered: ["Wiring", "Fixture Installation", "Appliance Repair"],
+    servicesOfferedArray: ["Wiring", "Fixture Installation", "Emergency Repairs"],
     contactInfo: { phone: "97XXXXXXXX", email: "sita.electrical@example.com" },
     address: "Baneshwor, Kathmandu",
     location: { lat: 27.7007, lng: 85.3301 },
-    rates: "Rs. 1000 for initial visit, then Rs. 700/hr",
+    ratesObject: { type: "per-job", amount: 1000, details: "Initial visit & diagnosis. Hourly rate applies for extended work." },
     availabilityString: "Mon-Fri, 10 AM - 7 PM",
     profileImage: "https://placehold.co/300x300.png?text=SE",
   },
   {
-    name: "Hari Appliance Repairs", // Changed from Auto Repairs
-    category: "appliance-repair", // Changed category
-    servicesOffered: ["AC Repair", "Fridge Servicing", "Washing Machine Fix"],
+    name: "Hari Appliance Repairs",
+    category: "appliance-repair",
+    servicesOfferedArray: ["AC Repair", "Fridge Servicing", "Washing Machine Fix"],
     contactInfo: { phone: "96XXXXXXXX" },
     address: "Thapathali, Kathmandu",
     location: { lat: 27.6937, lng: 85.3180 },
-    rates: "Varies by service",
+    ratesObject: { type: "varies", details: "Inspection fee may apply. Quotes provided after diagnosis." },
     availabilityString: "Everyday, 8 AM - 8 PM",
     profileImage: "https://placehold.co/300x300.png?text=HA",
   },
   {
     name: "Gita Home Tutions",
     category: "tuition-teacher",
-    servicesOffered: ["Maths (Class 1-10)", "Science (Class 1-10)"],
+    servicesOfferedArray: ["Maths (Class 1-10)", "Science (Class 1-10)", "English Language"],
     contactInfo: { email: "gita.tutions@example.com" },
     address: "Patan Durbar Square, Lalitpur",
     location: { lat: 27.6730, lng: 85.3240 },
-    rates: "Rs. 5000 per subject per month",
+    ratesObject: { type: "fixed-project", amount: 5000, details: "Per subject, per month. Group discounts available." },
     availabilityString: "Weekends, Evenings (4 PM - 7 PM)",
     profileImage: "https://placehold.co/300x300.png?text=GT",
   },
    {
-    name: "CleanSweep Home Services", // Changed from Toilet Assistance
-    category: "house-cleaning", // Changed category
-    servicesOffered: ["General house cleaning", "Deep cleaning", "Maid services"],
+    name: "CleanSweep Home Services",
+    category: "house-cleaning",
+    servicesOfferedArray: ["General house cleaning", "Deep cleaning", "Office cleaning"],
     contactInfo: { phone: "95XXXXXXX0" },
     address: "Asan, Kathmandu",
-    rates: "Rs. 1200 per cleaning session",
+    ratesObject: { type: "per-job", amount: 1200, details: "For standard 2BHK. Additional charges for larger areas or deep cleaning." },
     availabilityString: "Mon-Sun, 9 AM - 5 PM",
     profileImage: "https://placehold.co/300x300.png?text=CS",
+  },
+  {
+    name: "Creative Wall Painters",
+    category: "painter",
+    servicesOfferedArray: ["Interior Painting", "Exterior Painting", "Wall Texturing"],
+    contactInfo: { phone: "94XXXXXXX1", email: "creativewalls@example.com" },
+    address: "Jawalakhel, Lalitpur",
+    ratesObject: { type: "free-consultation", details: "Free on-site inspection and quotation for painting projects." },
+    availabilityString: "Mon-Sat, 10 AM - 5 PM",
+    profileImage: "https://placehold.co/300x300.png?text=WP",
   },
 ];
 
@@ -120,7 +143,10 @@ const parseAvailabilityString = (availabilityString: string): ServiceProviderAva
     if (lowerStr.includes("weekend")) { daysFound.add("Sat"); daysFound.add("Sun"); }
 
     availability.days = Array.from(daysFound);
-    if(availability.days.length === 0) availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri"]; // Default if no days parsed
+    if(availability.days.length === 0 && !lowerStr.includes("appointment")) {
+        availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri"]; // Default if no days parsed unless by appointment
+    }
+
 
     const timeRegex = /(\d{1,2})\s*(am|pm)?\s*-\s*(\d{1,2})\s*(am|pm)?/;
     const timeMatch = availabilityString.match(timeRegex);
@@ -132,43 +158,48 @@ const parseAvailabilityString = (availabilityString: string): ServiceProviderAva
         const endPeriod = timeMatch[4];
 
         if (startPeriod === "pm" && startHour < 12) startHour += 12;
-        if (startPeriod === "am" && startHour === 12) startHour = 0; // Midnight
+        if (startPeriod === "am" && startHour === 12) startHour = 0; 
         if (endPeriod === "pm" && endHour < 12) endHour += 12;
-        if (endPeriod === "am" && endHour === 12) endHour = 0; // Midnight, assuming next day if range implies it
+        if (endPeriod === "am" && endHour === 12) endHour = 0; 
 
         availability.startTime = `${String(startHour).padStart(2, '0')}:00`;
         availability.endTime = `${String(endHour).padStart(2, '0')}:00`;
     } else {
-        // Fallback if regex fails or only one time mentioned
         if (lowerStr.includes("morning") || lowerStr.includes("9 am")) availability.startTime = "09:00";
+        if (lowerStr.includes("afternoon") || lowerStr.includes("1 pm")) availability.startTime = "13:00";
         if (lowerStr.includes("evening") || lowerStr.includes("5 pm")) availability.endTime = "17:00";
         if (lowerStr.includes("4 pm")) availability.startTime = "16:00";
         if (lowerStr.includes("7 pm")) availability.endTime = "19:00";
     }
     
-    // Simple notes parsing
-    if(lowerStr.includes("by appointment")) availability.notes = "By appointment only";
+    if(lowerStr.includes("by appointment")) availability.notes = (availability.notes ? availability.notes + "; " : "") + "By appointment only";
     if(lowerStr.includes("24/7")) {
         availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         availability.startTime = "00:00";
         availability.endTime = "23:59";
-        availability.notes = "24/7 Emergency Available";
+        availability.notes = (availability.notes ? availability.notes + "; " : "") + "24/7 Emergency Available";
     }
-
 
     return availability;
 };
 
 
-export const mockServiceProviders: ServiceProvider[] = mockProvidersData.map(
+export const mockServiceProviders: ServiceProvider[] = mockProvidersRawData.map(
   (providerData, index) => {
     const reviews = generateReviews(providerData.name);
     return {
-      ...providerData,
       id: `${providerData.category}-${index + 1}`,
-      reviews,
+      name: providerData.name,
+      category: providerData.category,
+      servicesOffered: providerData.servicesOfferedArray, // Directly use the array
+      contactInfo: providerData.contactInfo,
+      address: providerData.address,
+      location: providerData.location,
+      rates: providerData.ratesObject, // Use the structured rates object
       overallRating: calculateOverallRating(reviews),
+      reviews,
       availability: parseAvailabilityString(providerData.availabilityString),
+      profileImage: providerData.profileImage,
     };
   }
 );

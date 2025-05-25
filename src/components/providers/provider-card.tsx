@@ -1,11 +1,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import type { ServiceProvider, ServiceProviderAvailability } from "@/lib/types";
+import type { ServiceProvider, ServiceProviderAvailability, ServiceProviderRates, RateType } from "@/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ServiceCategoryIcon from "@/components/icons/service-category-icon";
-import { Star, MapPin, Clock } from "lucide-react";
+import { Star, MapPin, Clock, Tag } from "lucide-react";
 
 interface ProviderCardProps {
   provider: ServiceProvider;
@@ -26,8 +26,48 @@ const formatAvailabilityForCard = (availability?: ServiceProviderAvailability): 
   }
   if (availability.startTime && availability.endTime) {
     parts.push(`${availability.startTime} - ${availability.endTime}`);
+  } else if (availability.startTime) {
+    parts.push(`from ${availability.startTime}`);
+  } else if (availability.endTime) {
+    parts.push(`until ${availability.endTime}`);
   }
-  return parts.length > 0 ? parts.join(' ') : "Check profile for details";
+  
+  const mainAvailability = parts.length > 0 ? parts.join(' ') : "Check profile";
+  if (availability.notes) {
+      return `${mainAvailability} (${availability.notes.substring(0,30)}${availability.notes.length > 30 ? '...' : ''})`;
+  }
+  return mainAvailability;
+};
+
+const formatRatesForCard = (rates: ServiceProviderRates): string => {
+  const { type, amount, details } = rates;
+  let rateString = "";
+
+  switch (type) {
+    case "per-hour":
+      rateString = amount ? `Rs. ${amount}/hour` : "Hourly (see details)";
+      break;
+    case "per-job":
+      rateString = amount ? `Approx. Rs. ${amount}/job` : "Per job (see details)";
+      break;
+    case "fixed-project":
+      rateString = amount ? `Rs. ${amount} (fixed)` : "Fixed price (see details)";
+      break;
+    case "varies":
+      rateString = "Rates vary";
+      break;
+    case "free-consultation":
+      rateString = "Free Consultation";
+      break;
+    default:
+      rateString = "Check profile for rates";
+  }
+  if (details && (type === "varies" || type === "free-consultation")) {
+    rateString += `: ${details.substring(0, 20)}${details.length > 20 ? '...' : ''}`;
+  } else if (details && amount) {
+     rateString += ` (${details.substring(0, 15)}${details.length > 15 ? '...' : ''})`;
+  }
+  return rateString;
 };
 
 
@@ -59,16 +99,21 @@ export default function ProviderCard({ provider }: ProviderCardProps) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-4 flex-grow">
-        <CardDescription className="line-clamp-2 text-sm mb-3">
-          {provider.servicesOffered.join(", ")}
-        </CardDescription>
+      <CardContent className="p-4 flex-grow space-y-2">
+        {provider.servicesOffered && provider.servicesOffered.length > 0 && (
+          <CardDescription className="line-clamp-2 text-sm">
+            Services: {provider.servicesOffered.join(", ")}
+          </CardDescription>
+        )}
         <div className="flex items-center gap-1 text-sm font-medium">
           <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
           <span>{provider.overallRating.toFixed(1)}</span>
           <span className="text-muted-foreground">({provider.reviews.length} reviews)</span>
         </div>
-        <p className="mt-2 text-sm text-foreground/80">Rates: <span className="font-semibold">{provider.rates}</span></p>
+        <div className="mt-2 flex items-center text-sm text-foreground/80">
+           <Tag className="w-4 h-4 mr-1.5 text-muted-foreground" /> 
+           <span>{formatRatesForCard(provider.rates)}</span>
+        </div>
          {provider.availability && (
           <div className="mt-2 flex items-center text-sm text-muted-foreground">
             <Clock className="w-4 h-4 mr-1.5" />

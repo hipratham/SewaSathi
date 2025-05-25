@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { serviceCategories, type ServiceCategory } from "@/lib/types";
+import { serviceCategories, type ServiceCategory, type RateType, rateTypeOptions } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Save, LocateFixed, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -48,8 +48,12 @@ const providerProfileSchema = z.object({
   address: z.string().min(5, { message: "Address must be at least 5 characters." }),
   phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }),
   email: z.string().email({ message: "Invalid email address." }),
-  servicesOffered: z.string().min(10, { message: "Describe services offered (min 10 characters)." }),
-  rates: z.string().min(3, { message: "Rates description is required." }),
+  servicesOfferedDescription: z.string().optional(), // Textarea for comma-separated services, now optional
+  rateType: z.custom<RateType>((val) => rateTypeOptions.map(rt => rt.value).includes(val as RateType), {
+    message: "Please select a valid rate type.",
+  }),
+  rateAmount: z.coerce.number().positive({ message: "Amount must be a positive number." }).optional(),
+  rateDetails: z.string().max(200, { message: "Rate details should be concise (max 200 characters)." }).optional(),
   availableDays: z.array(z.string()).nonempty({ message: "Please select at least one available day." }),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
@@ -66,24 +70,43 @@ const providerProfileSchema = z.object({
 })
 .refine(data => {
   if (data.startTime && !data.endTime) {
-    return false; // If startTime is provided, endTime is required
+    return false; 
   }
   if (!data.startTime && data.endTime) {
-    return false; // If endTime is provided, startTime is required
+    return false; 
   }
   if (data.startTime && data.endTime) {
-    // Basic time comparison: "HH:MM" format
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
     if (endH < startH || (endH === startH && endM <= startM)) {
-      return false; // End time must be after start time
+      return false; 
     }
   }
   return true;
 }, {
   message: "End time must be after start time. Both are required if one is provided.",
   path: ["endTime"],
+})
+.refine(data => {
+  const amountRequiredTypes: RateType[] = ["per-hour", "per-job", "fixed-project"];
+  if (amountRequiredTypes.includes(data.rateType) && (data.rateAmount === undefined || data.rateAmount <= 0)) {
+    return false;
+  }
+  return true;
+}, {
+  message: "A positive amount is required for this rate type.",
+  path: ["rateAmount"],
+})
+.refine(data => {
+    if(data.rateType === "varies" && (!data.rateDetails || data.rateDetails.trim().length < 5)) {
+        return false;
+    }
+    return true;
+}, {
+    message: "Please provide some details if rates vary or upon consultation (min 5 characters).",
+    path: ["rateDetails"]
 });
+
 
 export default function ProviderProfileForm() {
   const { toast } = useToast();
@@ -96,8 +119,10 @@ export default function ProviderProfileForm() {
       address: "",
       phone: "",
       email: "",
-      servicesOffered: "",
-      rates: "",
+      servicesOfferedDescription: "",
+      rateType: "varies",
+      rateAmount: undefined,
+      rateDetails: "",
       availableDays: [],
       startTime: "",
       endTime: "",
@@ -107,6 +132,7 @@ export default function ProviderProfileForm() {
   });
 
   const selectedCategory = form.watch("category");
+  const selectedRateType = form.watch("rateType");
 
   function onSubmit(values: z.infer<typeof providerProfileSchema>) {
     const availabilityData = {
@@ -114,20 +140,41 @@ export default function ProviderProfileForm() {
         startTime: values.startTime,
         endTime: values.endTime,
         notes: values.availabilityNotes,
-    }
-    const submissionData = { ...values, availability: availabilityData };
+    };
+    
+    const servicesArray = values.servicesOfferedDescription
+      ? values.servicesOfferedDescription.split(',').map(s => s.trim()).filter(s => s.length > 0)
+      : [];
+
+    const ratesData = {
+        type: values.rateType,
+        amount: values.rateAmount,
+        details: values.rateDetails,
+    };
+
+    const submissionData = { 
+      ...values, 
+      servicesOffered: servicesArray, // Overwrite with processed array
+      availability: availabilityData,
+      rates: ratesData, // Overwrite with structured rates
+    };
+
+    // Remove redundant/processed fields from the top level of submissionData
+    delete submissionData.servicesOfferedDescription;
     delete submissionData.availableDays;
     delete submissionData.startTime;
     delete submissionData.endTime;
     delete submissionData.availabilityNotes;
+    delete submissionData.rateType;
+    delete submissionData.rateAmount;
+    delete submissionData.rateDetails;
+
 
     console.log("Provider profile submitted:", submissionData);
-    // In a real app, this would be an API call
     toast({
       title: "Profile Saved!",
       description: "Your service provider profile has been submitted (mock).",
     });
-    // form.reset(); // Optionally reset form
   }
   
   const handleUseCurrentLocation = async () => {
@@ -310,19 +357,19 @@ export default function ProviderProfileForm() {
 
         <FormField
           control={form.control}
-          name="servicesOffered"
+          name="servicesOfferedDescription"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Services Offered</FormLabel>
+              <FormLabel>Services Offered (Optional)</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder="List the specific services you provide, e.g., Leak repair, faucet installation, drain unblocking."
+                  placeholder="List the specific services you provide, separated by commas (e.g., Leak repair, faucet installation, drain unblocking)."
                   className="resize-none"
                   rows={4}
                   {...field}
                 />
               </FormControl>
-              <FormDescription>This should be a general list of services related to your chosen category.</FormDescription>
+              <FormDescription>This helps clients understand your expertise. If left blank, your category will be the primary service indicator.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -330,18 +377,71 @@ export default function ProviderProfileForm() {
 
         <FormField
           control={form.control}
-          name="rates"
+          name="rateType"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Your Rates</FormLabel>
-              <FormControl>
-                <Input placeholder="e.g. Rs. 800/hour, Rs. 1500 per bike service" {...field} />
-              </FormControl>
-              <FormDescription>Be clear about your pricing structure.</FormDescription>
+              <FormLabel>Rate Structure</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select how you charge" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {rateTypeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        {selectedRateType && ["per-hour", "per-job", "fixed-project"].includes(selectedRateType) && (
+            <FormField
+                control={form.control}
+                name="rateAmount"
+                render={({ field }) => (
+                <FormItem>
+                    <FormLabel>Amount (NPR)</FormLabel>
+                    <FormControl>
+                    <Input type="number" placeholder="e.g., 800" {...field} onChange={e => field.onChange(parseFloat(e.target.value))}/>
+                    </FormControl>
+                    <FormMessage />
+                </FormItem>
+                )}
+            />
+        )}
+
+        <FormField
+            control={form.control}
+            name="rateDetails"
+            render={({ field }) => (
+            <FormItem>
+                <FormLabel>Additional Rate Details (Optional)</FormLabel>
+                <FormControl>
+                <Textarea
+                    placeholder={
+                        selectedRateType === "varies" 
+                        ? "Explain how your rates are determined (e.g., based on complexity, materials needed)." 
+                        : "Any extra info about your rates (e.g., minimum charges, what's included)."
+                    }
+                    className="resize-none"
+                    rows={3}
+                    {...field}
+                />
+                </FormControl>
+                 <FormDescription>
+                    {selectedRateType === "free-consultation" ? "You can mention what the free consultation covers." : "Add any clarifications about your pricing."}
+                 </FormDescription>
+                <FormMessage />
+            </FormItem>
+            )}
+        />
+
 
         <FormField
           control={form.control}

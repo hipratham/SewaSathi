@@ -4,7 +4,7 @@
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import { mockServiceProviders } from "@/lib/mock-data";
-import type { ServiceProvider, Review as ReviewType, ServiceProviderAvailability } from "@/lib/types";
+import type { ServiceProvider, Review as ReviewType, ServiceProviderAvailability, ServiceProviderRates, RateType } from "@/lib/types";
 import ServiceCategoryIcon from "@/components/icons/service-category-icon";
 import ReviewCard from "@/components/reviews/review-card";
 import ReviewSummary from "@/components/reviews/review-summary";
@@ -12,10 +12,11 @@ import ReviewForm from "@/components/reviews/review-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Star, MapPin, Phone, Mail, Clock, MessageSquarePlus, DollarSign } from "lucide-react";
+import { Star, MapPin, Phone, Mail, Clock, MessageSquarePlus, Tag, Info } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const formatAvailabilityForProfile = (availability?: ServiceProviderAvailability): string => {
   if (!availability) return "Not specified";
@@ -31,11 +32,51 @@ const formatAvailabilityForProfile = (availability?: ServiceProviderAvailability
     mainParts.push(`Ends by: ${availability.endTime}`);
   }
   
-  let fullString = mainParts.join(' | ');
+  let fullString = mainParts.join(' | ') || "Availability not fully specified.";
   if (availability.notes) {
-    fullString += (fullString ? '. ' : '') + `Notes: ${availability.notes}`;
+    fullString += (fullString.endsWith(".") ? ' ' : '. ') + `Notes: ${availability.notes}`;
   }
-  return fullString || "Availability details not fully specified.";
+  return fullString;
+};
+
+const formatRatesForProfile = (rates: ServiceProviderRates): React.ReactNode => {
+  const { type, amount, details } = rates;
+  let rateString = "";
+
+  switch (type) {
+    case "per-hour":
+      rateString = amount ? `Rs. ${amount} per hour` : "Hourly rate (details not specified)";
+      break;
+    case "per-job":
+      rateString = amount ? `Approx. Rs. ${amount} per job` : "Per job basis (details not specified)";
+      break;
+    case "fixed-project":
+      rateString = amount ? `Rs. ${amount} (fixed project price)` : "Fixed project price (details not specified)";
+      break;
+    case "varies":
+      rateString = "Rates vary / Upon Consultation";
+      break;
+    case "free-consultation":
+      rateString = "Offers Free Consultation";
+      break;
+    default:
+      rateString = "Please contact for rate information.";
+  }
+
+  return (
+    <>
+      <p className="flex items-center"><Tag className="w-4 h-4 mr-2 text-muted-foreground" /> <span className="font-semibold">{rateString}</span></p>
+      {details && (
+        <Alert variant="default" className="mt-2 text-sm bg-secondary/30 border-secondary/50">
+          <Info className="h-4 w-4 text-secondary-foreground/80" />
+          <AlertTitle className="text-secondary-foreground font-medium">Rate Details</AlertTitle>
+          <AlertDescription className="text-secondary-foreground/90">
+            {details}
+          </AlertDescription>
+        </Alert>
+      )}
+    </>
+  );
 };
 
 
@@ -94,8 +135,8 @@ export default function ProviderProfilePage() {
           <Image
             src={provider.profileImage || "https://placehold.co/1200x400.png"}
             alt={`${provider.name} cover image`}
-            fill // Changed from layout="fill"
-            style={{objectFit:"cover"}} // Changed from objectFit="cover"
+            fill 
+            style={{objectFit:"cover"}} 
             data-ai-hint="business cover photo"
             className="bg-muted"
           />
@@ -105,20 +146,45 @@ export default function ProviderProfilePage() {
             <div className="flex items-center text-sm text-primary-foreground/80 mt-1">
               <ServiceCategoryIcon category={provider.category} className="w-5 h-5 mr-2" />
               <span>{provider.category.charAt(0).toUpperCase() + provider.category.slice(1).replace('-', ' ')}</span>
+              {provider.category === 'other' && provider.otherCategoryDescription && (
+                <span className="ml-2 text-xs opacity-80">({provider.otherCategoryDescription})</span>
+              )}
             </div>
           </div>
         </div>
 
         <CardContent className="p-6 grid md:grid-cols-3 gap-6">
           <div className="md:col-span-2 space-y-6">
-            <section>
-              <h2 className="text-xl font-semibold text-primary mb-3">Services Offered</h2>
-              <div className="flex flex-wrap gap-2">
-                {provider.servicesOffered.map((service) => (
-                  <Badge key={service} variant="secondary" className="text-sm">{service}</Badge>
-                ))}
-              </div>
-            </section>
+            {provider.servicesOffered && provider.servicesOffered.length > 0 && (
+              <section>
+                <h2 className="text-xl font-semibold text-primary mb-3">Services Offered</h2>
+                <div className="flex flex-wrap gap-2">
+                  {provider.servicesOffered.map((service) => (
+                    <Badge key={service} variant="secondary" className="text-sm">{service}</Badge>
+                  ))}
+                </div>
+              </section>
+            )}
+            {(!provider.servicesOffered || provider.servicesOffered.length === 0) && provider.category !== "other" && (
+                 <Alert variant="default" className="bg-muted/50">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Services</AlertTitle>
+                    <AlertDescription>
+                    This provider primarily offers services under the <span className="font-semibold">{provider.category.replace('-', ' ')}</span> category. Contact them for specific needs.
+                    </AlertDescription>
+                </Alert>
+            )}
+             {(!provider.servicesOffered || provider.servicesOffered.length === 0) && provider.category === "other" && provider.otherCategoryDescription && (
+                 <Alert variant="default" className="bg-muted/50">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Services</AlertTitle>
+                    <AlertDescription>
+                    This provider offers: <span className="font-semibold">{provider.otherCategoryDescription}</span>. Contact them for specific needs.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+
             <Separator />
             <section>
                <h2 className="text-xl font-semibold text-primary mb-3">Contact Information</h2>
@@ -130,10 +196,18 @@ export default function ProviderProfilePage() {
                   <p className="flex items-center"><Mail className="w-4 h-4 mr-2 text-muted-foreground" /> {provider.contactInfo.email}</p>
                 )}
                 <p className="flex items-center"><MapPin className="w-4 h-4 mr-2 text-muted-foreground" /> {provider.address}</p>
-                <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-muted-foreground" /> Availability: {formatAvailabilityForProfile(provider.availability)}</p>
-                <p className="flex items-center"><DollarSign className="w-4 h-4 mr-2 text-muted-foreground" /> Rates: <span className="font-semibold">{provider.rates}</span></p>
               </div>
             </section>
+            <Separator />
+             <section>
+               <h2 className="text-xl font-semibold text-primary mb-3">Availability & Rates</h2>
+                <div className="space-y-2 text-sm text-foreground/90">
+                    <p className="flex items-start"><Clock className="w-4 h-4 mr-2 text-muted-foreground mt-1" /> <span>{formatAvailabilityForProfile(provider.availability)}</span></p>
+                    {formatRatesForProfile(provider.rates)}
+                </div>
+            </section>
+
+
           </div>
           <div className="md:col-span-1 space-y-4">
             <Card className="bg-background">

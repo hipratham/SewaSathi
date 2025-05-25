@@ -28,6 +28,22 @@ export const serviceCategories: { value: ServiceCategory; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+export type RateType = "per-hour" | "per-job" | "fixed-project" | "varies" | "free-consultation";
+
+export const rateTypeOptions: { value: RateType; label: string }[] = [
+  { value: "per-hour", label: "Per Hour" },
+  { value: "per-job", label: "Per Job (approximate)" },
+  { value: "fixed-project", label: "Fixed Project Price" },
+  { value: "varies", label: "Varies / Upon Consultation" },
+  { value: "free-consultation", label: "Offers Free Consultation" },
+];
+
+export interface ServiceProviderRates {
+  type: RateType;
+  amount?: number; 
+  details?: string; 
+}
+
 export interface Review {
   id: string;
   userId: string;
@@ -48,7 +64,7 @@ export interface ServiceProvider {
   id: string;
   name: string;
   category: ServiceCategory;
-  servicesOffered: string[];
+  servicesOffered: string[]; // This is an array of service strings
   contactInfo: {
     phone?: string;
     email?: string;
@@ -58,7 +74,7 @@ export interface ServiceProvider {
     lat: number;
     lng: number;
   };
-  rates: string; // e.g., "Rs. 500/hour", "Rs. 1000 per job"
+  rates: ServiceProviderRates; 
   availability: ServiceProviderAvailability;
   reviews: Review[];
   overallRating: number; // Calculated average
