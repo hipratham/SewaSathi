@@ -18,13 +18,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import EsewaQrCode from "@/components/payments/esewa-qr";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
-import { CheckCircle, Send, CreditCard, Gift, Loader2, Info, Phone } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CheckCircle, Send, CreditCard, Gift, Loader2, Info, Phone, Mail } from "lucide-react"; // Added Mail icon
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
+import { useAuth } from "@/context/auth-context"; // Import useAuth
 
 const serviceRequestSchema = z.object({
   userName: z.string().min(2, { message: "Name is required." }),
+  userEmail: z.string().email({ message: "Please enter a valid email address." }), // Added email field
   userPhone: z.string().min(10, { message: "Your phone number is required (at least 10 digits)." }),
   location: z.string().min(3, { message: "Location is required." }),
   serviceNeeded: z.string().min(10, { message: "Please describe your needs (min. 10 characters)." }),
@@ -37,6 +39,7 @@ interface ServiceRequestFormProps {
 
 export default function ServiceRequestForm({ providerId }: ServiceRequestFormProps) {
   const { toast } = useToast();
+  const { user } = useAuth(); // Get user from AuthContext
   const [requestStatus, setRequestStatus] = useState<"form" | "payment" | "pending_acceptance" | "accepted" | "job_done" | "completed">("form");
   const [isLoading, setIsLoading] = useState(false);
   const [mockProviderContact, setMockProviderContact] = useState<string | null>(null);
@@ -45,12 +48,20 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
     resolver: zodResolver(serviceRequestSchema),
     defaultValues: {
       userName: "",
+      userEmail: "", // Default for email
       userPhone: "",
       location: "",
       serviceNeeded: "",
       tipAmount: 0,
     },
   });
+
+  useEffect(() => {
+    if (user) {
+      form.setValue("userName", user.displayName || user.email?.split('@')[0] || "");
+      form.setValue("userEmail", user.email || "");
+    }
+  }, [user, form]);
 
   const mockApiCall = (duration = 1500) => new Promise(resolve => setTimeout(resolve, duration));
 
@@ -61,7 +72,7 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
     const requestTime = new Date().toLocaleString();
     console.log(
       `Simulating notification to provider ${providerId || 'N/A'}: ` +
-      `New service request from ${values.userName} (Phone: ${values.userPhone}). ` +
+      `New service request from ${values.userName} (Email: ${values.userEmail}, Phone: ${values.userPhone}). ` +
       `Location: ${values.location}. Needs: ${values.serviceNeeded}. Time: ${requestTime}`
     );
 
@@ -70,14 +81,14 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
     setIsLoading(false);
     toast({
       title: "Details Submitted (Simulation)",
-      description: `Provider would be notified with your details (Name: ${values.userName}, Phone: ${values.userPhone}, Request Time: ${requestTime}). Please complete the Rs. 100 initial service fee payment to proceed.`,
+      description: `Provider would be notified with your details (Name: ${values.userName}, Email: ${values.userEmail}, Phone: ${values.userPhone}, Request Time: ${requestTime}). Please complete the Rs. 100 initial service fee payment to proceed.`,
       variant: "default",
     });
   }
 
   async function handlePaymentConfirmation() {
     setIsLoading(true);
-    await mockApiCall(); // Simulate payment verification
+    await mockApiCall(); 
     setRequestStatus("pending_acceptance");
     setIsLoading(false);
     toast({
@@ -86,10 +97,9 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
       variant: "default",
     });
     
-    // Simulate admin approval and provider match/acceptance after a delay
     setTimeout(async () => {
       setIsLoading(true);
-      await mockApiCall(); // Simulate provider finding/acceptance
+      await mockApiCall(); 
       const randomProviderPhone = `98X${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`;
       setMockProviderContact(`Provider Name (Mock), Phone: ${randomProviderPhone}`);
       setRequestStatus("accepted");
@@ -256,6 +266,22 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
               <FormLabel>Your Name</FormLabel>
               <FormControl>
                 <Input placeholder="Enter your full name" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="userEmail"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Your Email</FormLabel>
+              <FormControl>
+                 <div className="relative flex items-center">
+                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input type="email" placeholder="e.g. you@example.com" {...field} className="pl-10" />
+                </div>
               </FormControl>
               <FormMessage />
             </FormItem>

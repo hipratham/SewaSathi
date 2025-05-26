@@ -40,10 +40,10 @@ export const rateTypeOptions: { value: RateType; label: string }[] = [
 
 export interface ServiceProviderRates {
   type: RateType;
-  amount?: number | null;        // Used for per-hour, per-job, fixed-project
-  minAmount?: number | null;     // Used if type is 'varies'
-  maxAmount?: number | null;     // Used if type is 'varies'
-  details?: string | null;       // Used for 'free-consultation' description or optional notes for other types
+  amount?: number | null;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  details?: string | null;
 }
 
 export interface Review {
@@ -63,9 +63,10 @@ export interface ServiceProviderAvailability {
 }
 
 export interface ServiceProvider {
-  id: string; // This is often the Firebase Auth UID for providers
+  id: string;
   name: string;
   category: ServiceCategory;
+  otherCategoryDescription?: string;
   servicesOffered: string[];
   contactInfo: {
     phone: string;
@@ -79,43 +80,44 @@ export interface ServiceProvider {
   rates: ServiceProviderRates;
   availability: ServiceProviderAvailability;
   reviews: Review[];
-  overallRating: number; // Calculated average
+  overallRating: number;
   profileImage?: string;
-  otherCategoryDescription?: string;
 }
 
 export type ServiceRequestStatus =
-  | "pending_payment"          // Client submitted, waiting for initial fee
-  | "pending_provider_action"  // Initial fee paid, provider needs to accept/reject
-  | "pending_admin_fee"        // Provider accepted, waiting for provider to pay admin fee
-  | "awaiting_admin_confirmation" // Provider paid admin fee, admin needs to confirm
-  | "accepted_by_provider"     // Admin confirmed, client details shared with provider
+  | "pending_payment"
+  | "pending_provider_action"
+  | "pending_admin_fee"
+  | "awaiting_admin_confirmation"
+  | "accepted_by_provider"
   | "rejected_by_provider"
+  | "admin_fee_payment_rejected"
   | "in_progress"
-  | "job_completed"            // Job done by provider, awaiting client confirmation/tip
-  | "request_completed"        // Client confirmed job done, (optional tip paid)
+  | "job_completed"
+  | "request_completed"
   | "cancelled_by_client"
   | "cancelled_by_provider";
 
 
 export interface ServiceRequest {
   id: string;
-  userId: string; // Client's UID
+  userId: string; 
   clientName: string;
+  clientEmail?: string; // Added clientEmail
   clientPhone: string;
-  clientAddress: string; // Service location specified by client
-  clientServiceNeeded: string; // Detailed description from client
-  requestedAt: string; // ISO date string of initial request
-  providerId?: string | null; // Assigned provider's UID
-  serviceCategory?: ServiceCategory; // Category of service requested
+  clientAddress: string; 
+  clientServiceNeeded: string; 
+  requestedAt: string; 
+  providerId?: string | null; 
+  serviceCategory?: ServiceCategory; 
   status: ServiceRequestStatus;
-  paymentStatus?: "unpaid" | "paid_deposit" | "fully_paid"; // For client's payment to provider
-  estimatedJobValueByProvider?: number | null; // Provider's quote
-  adminFeeCalculated?: number | null; // 8% of estimatedJobValueByProvider
+  paymentStatus?: "unpaid" | "paid_deposit" | "fully_paid"; 
+  estimatedJobValueByProvider?: number | null; 
+  adminFeeCalculated?: number | null; 
   adminFeePaid?: boolean;
-  providerNotes?: string; // Notes from provider when accepting/rejecting
+  adminRejectionReason?: string;
+  providerNotes?: string; 
   tipAmount?: number | null;
 }
 
-// Add 'admin' to UserRole
 export type UserRole = "seeker" | "provider" | "admin" | null;

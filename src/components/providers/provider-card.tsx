@@ -5,7 +5,7 @@ import type { ServiceProvider, ServiceProviderAvailability, ServiceProviderRates
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ServiceCategoryIcon from "@/components/icons/service-category-icon";
-import { Star, MapPin, Clock, Tag } from "lucide-react";
+import { Star, MapPin, Clock, Tag, Send } from "lucide-react"; // Added Send icon
 
 interface ProviderCardProps {
   provider: ServiceProvider;
@@ -53,10 +53,9 @@ const formatRatesForCard = (rates: ServiceProviderRates): string => {
       rateString = "Check profile for rates";
   }
   
-  // Add a snippet of details if it's a non-amount based type and details exist
   if (details && (type === "varies" || type === "free-consultation") && !(minAmount && maxAmount && type === "varies")) {
     rateString += `: ${details.substring(0, 20)}${details.length > 20 ? '...' : ''}`;
-  } else if (details && amount) { // Or if it's an amount-based type and details exist
+  } else if (details && amount) { 
      rateString += ` (${details.substring(0, 15)}${details.length > 15 ? '...' : ''})`;
   }
   return rateString;
@@ -67,7 +66,7 @@ export default function ProviderCard({ provider }: ProviderCardProps) {
     <Card className="flex flex-col h-full overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
       <CardHeader className="p-4">
         <div className="flex items-start gap-4">
-          {provider.profileImage && (
+          {provider.profileImage ? (
              <Image
               src={provider.profileImage}
               alt={provider.name}
@@ -76,9 +75,15 @@ export default function ProviderCard({ provider }: ProviderCardProps) {
               className="rounded-lg border object-cover aspect-square"
               data-ai-hint="profile person"
             />
+          ) : (
+            <div className="w-20 h-20 bg-muted rounded-lg flex items-center justify-center text-muted-foreground text-2xl font-bold">
+              {provider.name.charAt(0).toUpperCase()}
+            </div>
           )}
           <div className="flex-1">
-            <CardTitle className="text-xl mb-1 text-primary">{provider.name}</CardTitle>
+            <Link href={`/providers/${provider.id}`} passHref>
+                <CardTitle className="text-xl mb-1 text-primary hover:underline cursor-pointer">{provider.name}</CardTitle>
+            </Link>
             <div className="flex items-center text-sm text-muted-foreground mb-1">
               <ServiceCategoryIcon category={provider.category} className="w-4 h-4 mr-1.5" />
               <span>{provider.category.charAt(0).toUpperCase() + provider.category.slice(1).replace('-', ' ')}</span>
@@ -129,7 +134,9 @@ export default function ProviderCard({ provider }: ProviderCardProps) {
       </CardContent>
       <CardFooter className="p-4 border-t">
         <Button asChild className="w-full">
-          <Link href={`/providers/${provider.id}`}>View Profile</Link>
+          <Link href={`/request-service?providerId=${provider.id}`}>
+            <Send className="mr-2 h-4 w-4" /> Request Service
+          </Link>
         </Button>
       </CardFooter>
     </Card>

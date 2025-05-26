@@ -35,23 +35,24 @@ const calculateOverallRating = (reviews: Review[]): number => {
 };
 
 interface RawProviderData {
-  id: string; // Using id as the Firebase Auth UID for mock providers
+  id: string;
   name: string;
   category: ServiceProvider['category'];
+  otherCategoryDescription?: string;
   servicesOfferedArray: string[];
   contactInfo: { phone: string; email: string };
   address: string;
   location?: ServiceProvider['location'];
   ratesObject: ServiceProviderRates;
-  availabilityString: string;
+  availabilityString: string; // Keep for parsing logic
+  availability?: ServiceProviderAvailability; // Make this optional, will be generated
   profileImage?: string;
-  otherCategoryDescription?: string;
 }
 
-// Ensure one of these IDs can be used as a UID for a test provider account
+
 const mockProvidersRawData: RawProviderData[] = [
   {
-    id: "mock-provider-uid-1", // This ID will be used as providerId in some mock requests
+    id: "mock-provider-uid-1",
     name: "Ramesh Plumbing Services",
     category: "plumber",
     servicesOfferedArray: ["Leak Repair", "Pipe Installation", "Drain Cleaning"],
@@ -63,7 +64,7 @@ const mockProvidersRawData: RawProviderData[] = [
     profileImage: "https://placehold.co/300x300.png?text=RP",
   },
   {
-    id: "mock-provider-uid-2", // Another mock provider ID
+    id: "mock-provider-uid-2",
     name: "Sita's Electrical Works",
     category: "electrician",
     servicesOfferedArray: ["Wiring", "Fixture Installation", "Emergency Repairs"],
@@ -140,9 +141,9 @@ const parseAvailabilityString = (availabilityString: string): ServiceProviderAva
     });
     if (lowerStr.includes("weekend")) { daysFound.add("Sat"); daysFound.add("Sun"); }
     availability.days = Array.from(daysFound);
-    if(availability.days.length === 0 && !lowerStr.includes("appointment")) availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri"]; // Default if no specific days mentioned
+    if(availability.days.length === 0 && !lowerStr.includes("appointment")) availability.days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
     
-    const timeRegex = /(\d{1,2})\s*(am|pm)?\s*-\s*(\d{1,2})\s*(am|pm)?/i; // Case insensitive for AM/PM
+    const timeRegex = /(\d{1,2})\s*(am|pm)?\s*-\s*(\d{1,2})\s*(am|pm)?/i; 
     const timeMatch = availabilityString.match(timeRegex);
     if (timeMatch) {
         let startHour = parseInt(timeMatch[1]); const startPeriod = timeMatch[2]?.toLowerCase();
@@ -156,7 +157,7 @@ const parseAvailabilityString = (availabilityString: string): ServiceProviderAva
     } else {
         if (lowerStr.includes("morning") || lowerStr.includes("9 am")) availability.startTime = "09:00";
         if (lowerStr.includes("afternoon") || lowerStr.includes("1 pm")) availability.startTime = "13:00";
-        if (lowerStr.includes("evening")) availability.endTime = "17:00"; // Default end for evening
+        if (lowerStr.includes("evening")) availability.endTime = "17:00"; 
         if (lowerStr.includes("4 pm")) availability.startTime = "16:00";
         if (lowerStr.includes("7 pm")) availability.endTime = "19:00";
     }
@@ -177,9 +178,10 @@ export const mockServiceProviders: ServiceProvider[] = mockProvidersRawData.map(
   (providerData) => {
     const reviews = generateReviews(providerData.name);
     return {
-      id: providerData.id, // Using the raw id as the main ServiceProvider id (which should be UID)
+      id: providerData.id,
       name: providerData.name,
       category: providerData.category,
+      otherCategoryDescription: providerData.otherCategoryDescription,
       servicesOffered: providerData.servicesOfferedArray,
       contactInfo: providerData.contactInfo,
       address: providerData.address,
@@ -187,9 +189,8 @@ export const mockServiceProviders: ServiceProvider[] = mockProvidersRawData.map(
       rates: providerData.ratesObject,
       overallRating: calculateOverallRating(reviews),
       reviews,
-      availability: parseAvailabilityString(providerData.availabilityString),
+      availability: providerData.availability || parseAvailabilityString(providerData.availabilityString), // Use pre-parsed if available
       profileImage: providerData.profileImage,
-      otherCategoryDescription: providerData.otherCategoryDescription,
     };
   }
 );
@@ -200,11 +201,12 @@ export const mockServiceRequests: ServiceRequest[] = [
     id: "req-001",
     userId: "client-uid-1",
     clientName: "Aasha Thapa",
+    clientEmail: "aasha.thapa@example.com",
     clientPhone: "9812345670",
     clientAddress: "Lazimpat, Kathmandu",
     clientServiceNeeded: "My kitchen sink is clogged and water is backing up. Need urgent help.",
-    requestedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), // 1 hour ago
-    providerId: "mock-provider-uid-1", // Ramesh Plumbing
+    requestedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), 
+    providerId: "mock-provider-uid-1", 
     serviceCategory: "plumber",
     status: "pending_provider_action",
   },
@@ -212,11 +214,12 @@ export const mockServiceRequests: ServiceRequest[] = [
     id: "req-002",
     userId: "client-uid-2",
     clientName: "Bikram Rai",
+    clientEmail: "bikram.rai@example.com",
     clientPhone: "9809876543",
     clientAddress: "Sanepa, Lalitpur",
     clientServiceNeeded: "Need to install new ceiling fans in two rooms and fix a faulty light switch.",
-    requestedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
-    providerId: "mock-provider-uid-2", // Sita's Electrical
+    requestedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), 
+    providerId: "mock-provider-uid-2", 
     serviceCategory: "electrician",
     status: "pending_provider_action",
   },
@@ -224,13 +227,14 @@ export const mockServiceRequests: ServiceRequest[] = [
     id: "req-003",
     userId: "client-uid-3",
     clientName: "Sunita Gurung",
+    clientEmail: "sunita.gurung@example.com",
     clientPhone: "9855555555",
     clientAddress: "Koteshwor, Kathmandu",
     clientServiceNeeded: "Washing machine is not spinning. Makes a loud noise.",
-    requestedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-    providerId: "mock-provider-uid-3", // Hari Appliance
+    requestedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), 
+    providerId: "mock-provider-uid-3", 
     serviceCategory: "appliance-repair",
-    status: "accepted_by_provider", // Example of an accepted one
+    status: "accepted_by_provider", 
     estimatedJobValueByProvider: 1200,
     adminFeeCalculated: 96,
     adminFeePaid: true,
@@ -239,13 +243,14 @@ export const mockServiceRequests: ServiceRequest[] = [
     id: "req-004",
     userId: "client-uid-4",
     clientName: "Rajesh Shrestha",
+    clientEmail: "rajesh.shrestha@example.com",
     clientPhone: "9841122333",
     clientAddress: "Old Baneshwor, Kathmandu",
     clientServiceNeeded: "Looking for a math tutor for my son in Class 8, CBSE board. Preferably 3 days a week.",
-    requestedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
-    providerId: "mock-provider-uid-4", // Gita Tutions
+    requestedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), 
+    providerId: "mock-provider-uid-4", 
     serviceCategory: "tuition-teacher",
-    status: "job_completed", // Example for work history
+    status: "job_completed", 
     estimatedJobValueByProvider: 4500,
     adminFeeCalculated: 360,
     adminFeePaid: true,
@@ -254,11 +259,12 @@ export const mockServiceRequests: ServiceRequest[] = [
     id: "req-005",
     userId: "client-uid-5",
     clientName: "Deepa Lama",
+    clientEmail: "deepa.lama@example.com",
     clientPhone: "9860000000",
     clientAddress: "Maharajgunj, Kathmandu",
     clientServiceNeeded: "Need a thorough cleaning for my 3BHK apartment before a party.",
-    requestedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), // 5 hours ago
-    providerId: "mock-provider-uid-1", // Assigning another to Ramesh for more data
+    requestedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), 
+    providerId: "mock-provider-uid-1", 
     serviceCategory: "house-cleaning",
     status: "pending_provider_action",
   },
@@ -266,13 +272,14 @@ export const mockServiceRequests: ServiceRequest[] = [
     id: "req-006",
     userId: "client-uid-6",
     clientName: "Nabin Karki",
+    clientEmail: "nabin.karki@example.com",
     clientPhone: "9801234567",
     clientAddress: "Budhanilkantha, Kathmandu",
     clientServiceNeeded: "The main circuit breaker keeps tripping. Need an electrician to diagnose and fix.",
-    requestedAt: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(), // 10 hours ago
-    providerId: "mock-provider-uid-2", // Sita's Electrical
+    requestedAt: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(), 
+    providerId: "mock-provider-uid-2", 
     serviceCategory: "electrician",
-    status: "pending_admin_fee", // Example for a provider who accepted but needs to pay admin fee
+    status: "pending_admin_fee", 
     estimatedJobValueByProvider: 1500,
     adminFeeCalculated: 120,
     adminFeePaid: false,
@@ -281,15 +288,33 @@ export const mockServiceRequests: ServiceRequest[] = [
     id: "req-007",
     userId: "client-uid-7",
     clientName: "Anita Maharjan",
+    clientEmail: "anita.maharjan@example.com",
     clientPhone: "9807654321",
     clientAddress: "Boudha, Kathmandu",
     clientServiceNeeded: "My AC is not cooling properly. Might need a gas refill or servicing.",
-    requestedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-    providerId: "mock-provider-uid-3", // Hari Appliance
+    requestedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), 
+    providerId: "mock-provider-uid-3", 
     serviceCategory: "appliance-repair",
-    status: "awaiting_admin_confirmation", // Provider paid, admin needs to confirm
+    status: "awaiting_admin_confirmation", 
     estimatedJobValueByProvider: 2000,
     adminFeeCalculated: 160,
-    adminFeePaid: true, // Provider marked as paid
+    adminFeePaid: true, 
+  },
+  {
+    id: "req-008",
+    userId: "client-uid-8",
+    clientName: "Prakash Yadav",
+    clientEmail: "prakash.yadav@example.com",
+    clientPhone: "9811112222",
+    clientAddress: "Chabahil, Kathmandu",
+    clientServiceNeeded: "Need a professional painter for two interior rooms, approx 12x14 ft each.",
+    requestedAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+    providerId: "mock-provider-uid-6", 
+    serviceCategory: "painter",
+    status: "admin_fee_payment_rejected",
+    estimatedJobValueByProvider: 8000,
+    adminFeeCalculated: 640,
+    adminFeePaid: false,
+    adminRejectionReason: "Screenshot of payment was unclear. Please re-upload or contact support."
   },
 ];
