@@ -14,18 +14,27 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { LogIn, Loader2, Phone, MailQuestion } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail, type User } from "firebase/auth";
+import { 
+  signInWithEmailAndPassword, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  sendPasswordResetEmail, 
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  type User 
+} from "firebase/auth";
 import { ref, get, set } from "firebase/database";
 import { auth, database } from "@/lib/firebase";
-import type { UserRole } from "@/lib/types"; // Import UserRole from types.ts
+import type { UserRole } from "@/lib/types"; 
 import { useState, type ChangeEvent } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-// Helper function to create a Google icon (simple SVG)
 const GoogleIcon = () => (
   <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4">
     <path
@@ -51,6 +60,7 @@ const GoogleIcon = () => (
 const signInSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(1, { message: "Password is required." }),
+  rememberMe: z.boolean().optional(),
 });
 
 const resetPasswordSchema = z.object({
@@ -72,6 +82,7 @@ export default function SignInForm() {
     defaultValues: {
       email: "",
       password: "",
+      rememberMe: true,
     },
   });
 
@@ -97,18 +108,16 @@ export default function SignInForm() {
     }
 
     const userRoleRef = ref(database, `users/${user.uid}/role`);
-    const snapshot = await get(userRoleRef); // Fetches /users/{uid}/role
+    const snapshot = await get(userRoleRef); 
 
     let role: UserRole = null;
     if (snapshot.exists()) {
       role = snapshot.val() as UserRole;
     } else {
-       // This block is entered if /users/{uid}/role doesn't exist
        const userEmail = user.email;
        const isGoogleSignIn = user.providerData.some(p => p.providerId === GoogleAuthProvider.PROVIDER_ID);
 
        if (isGoogleSignIn) {
-         // Check if the entire user node exists, to see if it's a truly new Google user vs. existing user missing role
          const userNodeRef = ref(database, `users/${user.uid}`);
          const userNodeSnapshot = await get(userNodeRef);
          if (!userNodeSnapshot.exists() && userEmail) {
@@ -124,7 +133,6 @@ export default function SignInForm() {
               description: "Your new SewaSathi account is ready (defaulted to Service Seeker).",
            });
          } else {
-            // Google user exists but /role path is missing or something else is wrong with their user node
              toast({
               variant: "destructive",
               title: "Sign In Problem",
@@ -133,7 +141,6 @@ export default function SignInForm() {
             return false;
          }
        } else {
-         // Non-Google sign-in (e.g., Email/Password) and /users/{uid}/role does not exist
          toast({
             variant: "destructive",
             title: "Sign In Problem (Role Missing)",
@@ -143,7 +150,7 @@ export default function SignInForm() {
        }
     }
     
-    if (role) { // Only proceed if role was successfully determined
+    if (role) { 
         toast({
           title: "Signed In!",
           description: `Welcome back to SewaSathi! Role: ${role}`,
@@ -156,17 +163,18 @@ export default function SignInForm() {
         } else if (role === "admin") {
           router.push("/dashboard");
         } else {
-          router.push("/"); // Fallback
+          router.push("/"); 
         }
         return true;
     }
-    // If role is still null after all checks (should have been caught by toasts above)
     return false;
   };
 
   async function onSubmit(values: z.infer<typeof signInSchema>) {
     setIsLoading(true);
     try {
+      const persistence = values.rememberMe ? browserLocalPersistence : browserSessionPersistence;
+      await setPersistence(auth, persistence);
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       await handleSuccessfulSignIn(userCredential.user);
     } catch (error: any) {
@@ -193,6 +201,9 @@ export default function SignInForm() {
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
+      // For Google Sign-In, persistence is typically managed by Google's session.
+      // You might still call setPersistence for consistency if needed, but it's less critical here.
+      // await setPersistence(auth, browserLocalPersistence); // Example: default to local for Google
       const result = await signInWithPopup(auth, provider);
       await handleSuccessfulSignIn(result.user);
     } catch (error: any) {
@@ -300,25 +311,46 @@ export default function SignInForm() {
                 </FormItem>
               )}
             />
-            <div className="text-sm">
-              <Button
-                type="button"
-                variant="link"
-                className="px-0 font-normal"
-                onClick={() => {
-                  setShowPasswordResetForm(true);
-                  const currentEmail = form.getValues("email");
-                  if (z.string().email().safeParse(currentEmail).success) {
-                    setResetEmail(currentEmail);
-                  } else {
-                    setResetEmail("");
-                  }
-                }}
-                disabled={isLoading || isGoogleLoading}
-              >
-                Forgot password?
-              </Button>
+            <div className="flex items-center justify-between">
+                <FormField
+                control={form.control}
+                name="rememberMe"
+                render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                    <FormControl>
+                        <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={isLoading || isGoogleLoading}
+                        />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                        <FormLabel className="font-normal">
+                        Remember me
+                        </FormLabel>
+                    </div>
+                    </FormItem>
+                )}
+                />
+                <Button
+                    type="button"
+                    variant="link"
+                    className="px-0 font-normal text-sm"
+                    onClick={() => {
+                    setShowPasswordResetForm(true);
+                    const currentEmail = form.getValues("email");
+                    if (z.string().email().safeParse(currentEmail).success) {
+                        setResetEmail(currentEmail);
+                    } else {
+                        setResetEmail("");
+                    }
+                    }}
+                    disabled={isLoading || isGoogleLoading}
+                >
+                    Forgot password?
+                </Button>
             </div>
+
             <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <LogIn className="mr-2 h-4 w-4"/>}
               Sign In
@@ -400,5 +432,3 @@ export default function SignInForm() {
     </Form>
   );
 }
-
-    
