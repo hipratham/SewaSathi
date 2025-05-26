@@ -27,6 +27,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { database } from "@/lib/firebase";
+import { ref, push, set } from "firebase/database";
+import type { ServiceRequest } from "@/lib/types";
 
 const serviceRequestSchema = z.object({
   userName: z.string().min(2, { message: "Name is required." }),
@@ -39,17 +42,18 @@ const serviceRequestSchema = z.object({
 });
 
 interface ServiceRequestFormProps {
-  providerId?: string; 
-  // The dashboard will now pass this to a new function to add to its local state
+  providerIdFromModal?: string; // Renamed to avoid confusion with internal providerId
   onOfferSubmit?: (offerData: any) => void; 
 }
 
-export default function ServiceRequestForm({ providerId: propProviderId, onOfferSubmit }: ServiceRequestFormProps) {
+export default function ServiceRequestForm({ providerIdFromModal, onOfferSubmit }: ServiceRequestFormProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const providerId = propProviderId || searchParams.get("providerId") || undefined;
+  
+  // Determine the providerId: prioritize modal prop, then search params
+  const providerId = providerIdFromModal || searchParams.get("providerId") || undefined;
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -72,13 +76,15 @@ export default function ServiceRequestForm({ providerId: propProviderId, onOffer
     if (user) {
       form.setValue("userName", user.displayName || user.email?.split('@')[0] || "");
       form.setValue("userEmail", user.email || "");
+      // Consider fetching user's phone from their profile if available
     }
   }, [user, form]);
 
-  const mockApiCall = (duration = 1500) => new Promise(resolve => setTimeout(resolve, duration));
 
   async function onSubmit(values: z.infer<typeof serviceRequestSchema>) {
     setIsLoading(true);
+    console.log("ServiceRequestForm: Attempting to submit offer. Target Provider ID:", providerId);
+
     if (!providerId) {
         toast({ title: "Error", description: "Provider ID is missing. Cannot send offer.", variant: "destructive"});
         setIsLoading(false);
@@ -91,8 +97,10 @@ export default function ServiceRequestForm({ providerId: propProviderId, onOffer
         return;
     }
     
-    const newOffer = {
-      id: `offer-${Date.now()}`,
+    const offersRef = ref(database, 'serviceRequests');
+    const newOfferRef = push(offersRef); // Generate a unique key for the new offer
+
+    const newOfferData: Omit<ServiceRequest, 'id'> & { id?: string } = { // id will be set by Firebase key
       userId: user.uid,
       clientName: values.userName,
       clientEmail: values.userEmail,
@@ -102,40 +110,44 @@ export default function ServiceRequestForm({ providerId: propProviderId, onOffer
       budget: values.budget || null,
       preferredDate: values.preferredDate ? values.preferredDate.toISOString().split('T')[0] : null,
       requestedAt: new Date().toISOString(),
-      providerId: providerId,
+      providerId: providerId, // Essential: ID of the targeted provider
       status: "offer_sent_to_provider",
-      // Other fields will be populated as the offer progresses
     };
 
-    console.log("New Offer Submitted:", newOffer);
+    try {
+      await set(newOfferRef, newOfferData);
+      const offerId = newOfferRef.key; // Get the generated ID
+      console.log("ServiceRequestForm: Offer submitted to Firebase with ID:", offerId, newOfferData);
 
-    // If onOfferSubmit is provided (likely from dashboard modal), use it
-    if (onOfferSubmit) {
-        onOfferSubmit(newOffer);
+      if (onOfferSubmit) { // If used as a modal component
+          onOfferSubmit({...newOfferData, id: offerId}); // Pass data back to parent
+          toast({
+              title: "Offer Sent!",
+              description: "Your offer has been sent to the provider.",
+          });
+          form.reset(); // Reset form after successful modal submission
+      } else { // If used as a standalone page
+        setIsSubmitted(true); // Trigger success UI for standalone page
         toast({
-            title: "Offer Sent!",
-            description: "Your offer has been sent to the provider.",
+          title: "Offer Sent Successfully!",
+          description: `Your offer has been sent. You can track its status on your dashboard. Offer ID: ${offerId}`,
+          variant: "default",
+          duration: 7000,
         });
-        setIsLoading(false);
-        setIsSubmitted(true); // To potentially close modal or show success state
-        form.reset();
-        return; 
+      }
+    } catch (error: any) {
+      console.error("ServiceRequestForm: Error submitting offer to Firebase:", error);
+      toast({
+        title: "Offer Submission Failed",
+        description: error.message || "Could not send your offer. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+      if (!onOfferSubmit) { // Only reset form on standalone page if not handled by modal close
+         // form.reset(); // Let standalone page show success message before reset or redirect
+      }
     }
-    
-    // Fallback for standalone page usage (simulates adding to a global list)
-    // In a real app, this would be an API call to save to Firebase.
-    await mockApiCall(); 
-    // For demo purposes, we'll assume it's added to a list that the dashboard page can access.
-    // This part would be more complex with actual data persistence.
-
-    setIsLoading(false);
-    setIsSubmitted(true);
-    toast({
-      title: "Offer Sent Successfully!",
-      description: `Your offer has been sent. You can track its status on your dashboard.`,
-      variant: "default",
-      duration: 7000,
-    });
   }
 
   const handleUseCurrentLocation = async () => {
@@ -219,13 +231,13 @@ export default function ServiceRequestForm({ providerId: propProviderId, onOffer
     }
   };
 
-  if (isSubmitted && !onOfferSubmit) { // Only show this full page success if not used as a modal component
+  if (isSubmitted && !onOfferSubmit) { 
     return (
       <div className="text-center p-8 bg-card rounded-lg shadow-md space-y-4">
         <CheckCircle className="mx-auto h-16 w-16 text-green-500 mb-4" />
         <h2 className="text-2xl font-semibold text-primary">Offer Sent!</h2>
-        <p className="text-muted-foreground">Thank you for your offer. You can track its progress on your dashboard.</p>
-        <div className="flex gap-4 justify-center">
+        <p className="text-muted-foreground">Thank you for your offer. The provider has been notified. You can track its progress on your dashboard.</p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button asChild>
             <Link href={providerId ? `/providers/${providerId}` : "/providers"}>
               {providerId ? "Back to Provider Profile" : "Find More Providers"}
@@ -242,18 +254,15 @@ export default function ServiceRequestForm({ providerId: propProviderId, onOffer
     );
   }
   
-  // If submitted from a modal, the modal controller should close it.
-  // This form component just signals success via isSubmitted.
-
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-1"> {/* Reduced padding for modal use */}
-        {providerId && !onOfferSubmit && // Show this only if on the standalone page
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-1">
+        {providerId && !onOfferSubmit && 
             <Alert variant="default" className="bg-primary/10 border-primary/30">
                 <Info className="h-4 w-4 text-primary" />
                 <AlertTitle className="text-primary">Sending Offer to Specific Provider</AlertTitle>
                 <AlertDescription>
-                Your offer will be sent directly to the selected provider.
+                Your offer will be sent directly to the selected provider. Provider ID: {providerId.substring(0,10)}...
                 </AlertDescription>
             </Alert>
         }
@@ -333,8 +342,10 @@ export default function ServiceRequestForm({ providerId: propProviderId, onOffer
                   className="resize-none"
                   rows={4}
                   {...field}
+                  value={field.value ?? ""}
                 />
               </FormControl>
+              <FormDescription>The more details you provide, the better the provider can assess the offer.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -386,7 +397,7 @@ export default function ServiceRequestForm({ providerId: propProviderId, onOffer
                     selected={field.value || undefined}
                     onSelect={(date) => field.onChange(date)}
                     disabled={(date) =>
-                      date < new Date(new Date().setDate(new Date().getDate() - 1)) // Disable past dates
+                      date < new Date(new Date().setDate(new Date().getDate() - 1)) 
                     }
                     initialFocus
                   />
@@ -398,11 +409,15 @@ export default function ServiceRequestForm({ providerId: propProviderId, onOffer
         />
 
 
-        <Button type="submit" className="w-full text-lg py-3" disabled={isLoading}>
+        <Button type="submit" className="w-full text-lg py-3" disabled={isLoading || !providerId}>
           {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Send className="mr-2 h-5 w-5" />}
           Send Offer
         </Button>
+        {!providerId && 
+            <p className="text-xs text-destructive text-center">Provider ID is missing. Cannot send offer. Please select a provider first.</p>
+        }
       </form>
     </Form>
   );
 }
+    

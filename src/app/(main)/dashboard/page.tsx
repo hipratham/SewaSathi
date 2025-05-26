@@ -6,22 +6,24 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/auth-context";
-import { mockServiceRequests, mockServiceProviders } from "@/lib/mock-data"; 
+import { mockServiceProviders } from "@/lib/mock-data"; // Still using mock providers for listing
 import type { ServiceRequest, ServiceRequestStatus, ServiceProvider, ServiceProviderAvailability, ServiceProviderRates } from "@/lib/types";
 import { COMMISSION_RATE } from "@/lib/types";
 import { AlertCircle, CheckCircle, Clock, DollarSign, Eye, MessageSquare, XCircle, Info, LayoutDashboard, Hourglass, UserCog, UserCheck, Briefcase, FileText, Users, ListChecks, User as UserIcon, Settings, Banknote, CalendarDays, Receipt, ThumbsUp, ThumbsDown, AlertTriangle, WalletCards, Edit3, History, SendHorizonal } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import ServiceRequestForm from "@/components/providers/service-request-form"; // For Send Offer modal
+import ServiceRequestForm from "@/components/providers/service-request-form"; 
+import { database } from "@/lib/firebase";
+import { ref, onValue, update, off } from "firebase/database";
 
-// Helper function to find provider name from mock data
+
 const getProviderName = (providerId: string | null | undefined, providers: ServiceProvider[]): string => {
   if (!providerId) return "N/A";
   const provider = providers.find(p => p.id === providerId);
@@ -34,7 +36,6 @@ const getSeekerName = (seekerId: string | null | undefined, offers: ServiceReque
   return offer ? offer.clientName : "Unknown Seeker";
 }
 
-// Helper function to format availability for Admin Dashboard
 const formatAvailabilityForAdmin = (availability?: ServiceProviderAvailability): string => {
   if (!availability) return "Not specified";
   let parts: string[] = [];
@@ -55,7 +56,6 @@ const formatAvailabilityForAdmin = (availability?: ServiceProviderAvailability):
   return fullString || "Availability not fully specified.";
 };
 
-// Helper function to format rates for Admin Dashboard
 const formatRatesForAdmin = (rates: ServiceProviderRates): React.ReactNode => {
   const { type, amount, minAmount, maxAmount, details } = rates;
   let rateString = "";
@@ -91,13 +91,13 @@ const formatRatesForAdmin = (rates: ServiceProviderRates): React.ReactNode => {
   );
 };
 
-const getStatusBadgeVariant = (status: ServiceRequestStatus) => {
+const getStatusBadgeVariant = (status: ServiceRequestStatus): "default" | "secondary" | "destructive" | "outline" | "warning" | "info" | "success" => {
     switch (status) {
         case "offer_sent_to_provider": return "secondary";
         case "offer_declined_by_provider": return "destructive";
-        case "offer_accepted_by_provider_pending_payment": return "warning"; // You might need to define a 'warning' variant for Badge
-        case "payment_submitted_pending_admin_approval": return "info"; // And 'info'
-        case "admin_approved_contact_unlocked": return "success"; // And 'success'
+        case "offer_accepted_by_provider_pending_payment": return "warning"; 
+        case "payment_submitted_pending_admin_approval": return "info"; 
+        case "admin_approved_contact_unlocked": return "success"; 
         case "admin_rejected_payment": return "destructive";
         case "job_completed": return "outline";
         default: return "default";
@@ -106,12 +106,13 @@ const getStatusBadgeVariant = (status: ServiceRequestStatus) => {
 
 
 export default function DashboardPage() {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading: authLoading } = useAuth();
   const { toast } = useToast();
   
-  // Use local state for serviceRequests to simulate updates
-  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>(mockServiceRequests);
-  const [localServiceProviders, setLocalServiceProviders] = useState<ServiceProvider[]>(mockServiceProviders);
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
+  const [providerSpecificRequests, setProviderSpecificRequests] = useState<ServiceRequest[]>([]);
+  const [localServiceProviders] = useState<ServiceProvider[]>(mockServiceProviders); // Keep using mock providers for admin listing for now
+  const [providerDataLoading, setProviderDataLoading] = useState<boolean>(false);
 
 
   // Provider specific state
@@ -126,18 +127,83 @@ export default function DashboardPage() {
   const [offerToVerifyByAdmin, setOfferToVerifyByAdmin] = useState<ServiceRequest | null>(null);
 
   // Seeker specific state
-  const [showSendOfferModal, setShowSendOfferModal] = useState(false);
   const [selectedProviderForOffer, setSelectedProviderForOffer] = useState<ServiceProvider | null>(null);
 
 
-  const updateOfferStatusLocally = (offerId: string, newStatus: ServiceRequestStatus, updates?: Partial<ServiceRequest>) => {
-    setServiceRequests(prevOffers =>
-      prevOffers.map(offer =>
-        offer.id === offerId ? { ...offer, status: newStatus, ...updates } : offer
-      )
-    );
-    // TODO: Implement actual Firebase update here
-  };
+  useEffect(() => {
+    if (!user || authLoading) return;
+
+    const serviceRequestsRef = ref(database, 'serviceRequests');
+    let listener: any; // To store the listener for cleanup
+
+    if (role === 'provider' && user.uid) {
+      setProviderDataLoading(true);
+      console.log("Dashboard (Provider): Setting up Firebase listener for provider UID:", user.uid);
+      listener = onValue(serviceRequestsRef, (snapshot) => {
+        const data = snapshot.val();
+        console.log("Dashboard (Provider): Raw snapshot value from Firebase:", data);
+        if (data) {
+          const allRequests: ServiceRequest[] = Object.keys(data).map(key => ({
+            id: key,
+            ...data[key]
+          }));
+          console.log("Dashboard (Provider): All requests mapped from DB:", allRequests);
+          
+          const filtered = allRequests.filter(req => {
+            console.log(`Dashboard (Provider): Checking request ID ${req.id} (providerId: ${req.providerId}, status: ${req.status}) against user UID ${user.uid}`);
+            if (req.providerId && req.providerId === user.uid) {
+              console.log(`Dashboard (Provider): MATCH FOUND for request ID ${req.id}`);
+              return true;
+            }
+            if (req.providerId && req.providerId !== user.uid) {
+              console.log(`Dashboard (Provider): Mismatch - Request ID ${req.id} has providerId ${req.providerId} but current user is ${user.uid}`);
+            }
+            if (!req.providerId) {
+              console.log(`Dashboard (Provider): Request ID ${req.id} has no providerId.`);
+            }
+            return false;
+          });
+
+          console.log("Dashboard (Provider): Filtered requests for this provider:", filtered);
+          setProviderSpecificRequests(filtered);
+        } else {
+          console.log("Dashboard (Provider): No data found at /serviceRequests path.");
+          setProviderSpecificRequests([]);
+        }
+        setProviderDataLoading(false);
+      }, (error) => {
+        console.error("Dashboard (Provider): Firebase onValue error:", error);
+        toast({ variant: "destructive", title: "Error Fetching Requests", description: error.message });
+        setProviderDataLoading(false);
+      });
+    } else if (role === 'admin' || role === 'seeker') {
+      // For admin and seeker, continue using mock data for serviceRequests display for now
+      // This will be replaced when their real-time data fetching is implemented
+      // setServiceRequests(mockServiceRequests); // This was the previous approach. For now, we'll let it be empty for consistency unless explicitly populated.
+    }
+
+    return () => {
+      if (listener && serviceRequestsRef) {
+        console.log("Dashboard (Provider): Cleaning up Firebase listener.");
+        off(serviceRequestsRef, 'value', listener);
+      }
+    };
+  }, [user, role, authLoading, toast]);
+
+
+  const updateOfferStatusInFirebase = useCallback(async (offerId: string, newStatus: ServiceRequestStatus, updates?: Partial<ServiceRequest>) => {
+    const offerRef = ref(database, `serviceRequests/${offerId}`);
+    try {
+      await update(offerRef, { status: newStatus, ...updates });
+      // No need to manually update local state if onValue listener is robust, but can be kept for immediate UI feedback
+      // For provider view, onValue listener will update providerSpecificRequests
+      // For admin/seeker (if they were real-time), their listeners would handle it.
+    } catch (error: any) {
+      console.error("Error updating offer status in Firebase:", error);
+      toast({ variant: "destructive", title: "Update Failed", description: "Could not update offer status." });
+    }
+  }, [toast]);
+
 
   // --- Provider Actions ---
   const handleProviderAcceptOffer = (offer: ServiceRequest) => {
@@ -146,17 +212,16 @@ export default function DashboardPage() {
         return;
     }
     const commission = offer.budget * COMMISSION_RATE;
-    updateOfferStatusLocally(offer.id, "offer_accepted_by_provider_pending_payment", { commissionAmount: commission });
-    setOfferToAcceptOrDecline(offer); // Keep offer context for payment dialog
+    updateOfferStatusInFirebase(offer.id, "offer_accepted_by_provider_pending_payment", { commissionAmount: commission });
+    setOfferToAcceptOrDecline(offer); 
     setShowCommissionPaymentDialog(true);
     toast({ title: "Offer Accepted!", description: "Please proceed to pay the commission." });
   };
 
   const handleProviderPaidCommission = () => {
     if (!offerToAcceptOrDecline) return;
-    // Simulate payment reference
     const paymentRef = `ESW-MOCK-${Date.now().toString().slice(-6)}`;
-    updateOfferStatusLocally(offerToAcceptOrDecline.id, "payment_submitted_pending_admin_approval", { paymentReference: paymentRef });
+    updateOfferStatusInFirebase(offerToAcceptOrDecline.id, "payment_submitted_pending_admin_approval", { paymentReference: paymentRef });
     setShowCommissionPaymentDialog(false);
     setOfferToAcceptOrDecline(null);
     toast({ title: "Payment Submitted", description: "Admin will verify your payment shortly." });
@@ -169,22 +234,22 @@ export default function DashboardPage() {
   
   const handleProviderSubmitDecline = () => {
     if (!offerToDecline) return;
-    updateOfferStatusLocally(offerToDecline.id, "offer_declined_by_provider", { providerRejectionReason: providerDeclineReason.trim() || "Declined without specific reason." });
+    const reason = providerDeclineReason.trim() || "Declined without specific reason.";
+    updateOfferStatusInFirebase(offerToDecline.id, "offer_declined_by_provider", { providerRejectionReason: reason });
     toast({ title: "Offer Declined", description: "The seeker has been notified." });
     setOfferToDecline(null);
   };
 
   const handleProviderResubmitPayment = (offer: ServiceRequest) => {
-    // Resets to the state where provider needs to confirm payment again
-    updateOfferStatusLocally(offer.id, "offer_accepted_by_provider_pending_payment");
+    updateOfferStatusInFirebase(offer.id, "offer_accepted_by_provider_pending_payment");
     setOfferToAcceptOrDecline(offer);
     setShowCommissionPaymentDialog(true);
-     toast({ title: "Resubmit Payment", description: "Please confirm your commission payment again." });
+    toast({ title: "Resubmit Payment", description: "Please confirm your commission payment again." });
   };
 
   // --- Admin Actions ---
   const handleAdminApprovePayment = (offerId: string) => {
-    updateOfferStatusLocally(offerId, "admin_approved_contact_unlocked", { adminFeePaid: true });
+    updateOfferStatusInFirebase(offerId, "admin_approved_contact_unlocked", { adminFeePaid: true });
     toast({ title: "Payment Approved!", description: "Provider can now see seeker's contact details."});
   };
 
@@ -199,64 +264,73 @@ export default function DashboardPage() {
       toast({ variant: "destructive", title: "Reason Required", description: "Please provide a reason for rejection."});
       return;
     }
-    updateOfferStatusLocally(offerToVerifyByAdmin.id, "admin_rejected_payment", { adminRejectionReason: adminRejectionReasonInput.trim(), adminFeePaid: false });
+    const reason = adminRejectionReasonInput.trim();
+    updateOfferStatusInFirebase(offerToVerifyByAdmin.id, "admin_rejected_payment", { adminRejectionReason: reason, adminFeePaid: false });
     toast({ title: "Payment Rejected", description: "Provider has been notified."});
     setOfferToVerifyByAdmin(null);
     setShowAdminRejectionDialog(false);
   };
   
-  // --- Seeker Actions ---
+  // --- Seeker Actions (Simulated for now) ---
   const handleSeekerSendNewOffer = (offerData: ServiceRequest) => {
-    setServiceRequests(prev => [offerData, ...prev]); // Add new offer to local state
-    setShowSendOfferModal(false); // Close modal after submission
-    setSelectedProviderForOffer(null);
-    // Toast is handled by OfferForm itself on successful submission
+    // In a real app, this would be handled by the ServiceRequestForm's Firebase write.
+    // This function might be used if the dashboard itself had a "new offer" button.
+    // For now, we're assuming offers are created via /request-service page.
+    toast({ title: "Offer Sent (Simulated from Dashboard)" });
   };
 
 
-  // Memoized filtered lists for performance
-  const demoProviderIdForFiltering = user?.role === 'provider' ? user.uid : "mock-provider-uid-1"; // Use actual UID if provider
-  const seekerIdForFiltering = user?.role === 'seeker' ? user.uid : "seeker-uid-1"; // Use actual UID if seeker
-  
+  // Memoized filtered lists for provider from real-time data
   const providerNewOffers = useMemo(() => 
-    serviceRequests.filter(req => req.providerId === demoProviderIdForFiltering && req.status === "offer_sent_to_provider"),
-    [serviceRequests, demoProviderIdForFiltering]
+    providerSpecificRequests.filter(req => req.status === "offer_sent_to_provider"),
+    [providerSpecificRequests]
   );
   const providerActiveOffers = useMemo(() =>
-    serviceRequests.filter(req => req.providerId === demoProviderIdForFiltering && 
+    providerSpecificRequests.filter(req => 
       (req.status === "offer_accepted_by_provider_pending_payment" || 
        req.status === "payment_submitted_pending_admin_approval" ||
        req.status === "admin_approved_contact_unlocked" ||
        req.status === "admin_rejected_payment")),
-    [serviceRequests, demoProviderIdForFiltering]
+    [providerSpecificRequests]
   );
   const providerWorkHistory = useMemo(() => 
-    serviceRequests.filter(req => req.providerId === demoProviderIdForFiltering && (req.status === "job_completed" || req.status === "offer_declined_by_provider")),
-    [serviceRequests, demoProviderIdForFiltering]
+    providerSpecificRequests.filter(req => (req.status === "job_completed" || req.status === "offer_declined_by_provider")),
+    [providerSpecificRequests]
   );
 
-  const seekerSentOffers = useMemo(() =>
-    serviceRequests.filter(req => req.userId === seekerIdForFiltering && 
+  // Memoized filtered lists for Seeker from local/mock data
+  const seekerSentOffers = useMemo(() => {
+    if (role !== 'seeker' || !user?.uid) return [];
+    // This part needs to be updated to use real-time data for seekers if that feature is added
+    // For now, it will operate on the general `serviceRequests` which is mock for seekers
+    return serviceRequests.filter(req => req.userId === user.uid && 
       (req.status === "offer_sent_to_provider" || 
        req.status === "offer_accepted_by_provider_pending_payment" ||
        req.status === "payment_submitted_pending_admin_approval" ||
        req.status === "admin_approved_contact_unlocked" ||
        req.status === "admin_rejected_payment"
-      )),
-    [serviceRequests, seekerIdForFiltering]
-  );
-  const seekerOfferHistory = useMemo(() =>
-    serviceRequests.filter(req => req.userId === seekerIdForFiltering && (req.status === "offer_declined_by_provider" || req.status === "job_completed")),
-    [serviceRequests, seekerIdForFiltering]
-  );
+      ));
+  }, [serviceRequests, user, role]);
 
-  const adminPendingPayments = useMemo(() => 
-    serviceRequests.filter(req => req.status === "payment_submitted_pending_admin_approval"),
-    [serviceRequests]
-  );
+  const seekerOfferHistory = useMemo(() => {
+    if (role !== 'seeker' || !user?.uid) return [];
+    return serviceRequests.filter(req => req.userId === user.uid && (req.status === "offer_declined_by_provider" || req.status === "job_completed"));
+  }, [serviceRequests, user, role]);
+
+  // Memoized filtered list for Admin from local/mock data
+  const adminPendingPayments = useMemo(() => {
+    if (role !== 'admin') return [];
+    // This will also need to be real-time for admins eventually
+    return serviceRequests.filter(req => req.status === "payment_submitted_pending_admin_approval");
+  },[serviceRequests, role]);
+  
+  const allRequestsForAdminView = useMemo(() => {
+    // For admin, show all requests (still mock for now for 'serviceRequests' list)
+    return serviceRequests;
+  }, [serviceRequests]);
 
 
-  if (loading) {
+  if (authLoading) {
     return <div className="flex justify-center items-center h-screen"><Hourglass className="h-12 w-12 animate-spin text-primary" /> <p className="ml-4 text-lg text-muted-foreground">Loading dashboard...</p></div>;
   }
 
@@ -299,8 +373,8 @@ export default function DashboardPage() {
                       adminPendingPayments.map((offer) => (
                         <Card key={offer.id} className="shadow-md border hover:shadow-lg transition-shadow">
                           <CardHeader className="pb-3 bg-muted/50 rounded-t-md">
-                            <CardTitle className="text-lg text-primary-foreground bg-primary/90 px-4 py-2 rounded-t-md flex justify-between items-center -mx-4 -mt-3 mb-3">
-                              <span>Offer ID: {offer.id.substring(0, 8)}...</span>
+                             <CardTitle className="text-lg text-primary-foreground bg-primary/90 px-4 py-2 rounded-t-md flex justify-between items-center -mx-4 -mt-3 mb-3">
+                               <span>Offer ID: {offer.id.substring(0, 8)}...</span>
                                <Badge variant="secondary" className="capitalize bg-background text-primary font-semibold">
                                 {offer.status.replace(/_/g, ' ')}
                                </Badge>
@@ -342,11 +416,11 @@ export default function DashboardPage() {
                     <CardTitle className="text-xl text-secondary-foreground flex items-center">
                         <ListChecks className="mr-2 h-5 w-5 text-secondary"/> All Offers & Requests
                     </CardTitle>
-                    <CardDescription>Overview of all offers on the platform.</CardDescription>
+                    <CardDescription>Overview of all offers on the platform. (Currently shows mock data for 'all')</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {serviceRequests.length > 0 ? (
-                      serviceRequests.map((req) => (
+                    {allRequestsForAdminView.length > 0 ? (
+                      allRequestsForAdminView.map((req) => (
                         <Card key={req.id} className="shadow-sm border hover:shadow-md transition-shadow">
                           <CardHeader className="pb-3">
                             <CardTitle className="text-md flex justify-between items-center">
@@ -393,7 +467,7 @@ export default function DashboardPage() {
                      <CardTitle className="text-xl text-secondary-foreground flex items-center">
                         <Users className="mr-2 h-5 w-5 text-secondary"/>All Service Providers
                     </CardTitle>
-                    <CardDescription>Overview of registered service providers.</CardDescription>
+                    <CardDescription>Overview of registered service providers. (Currently shows mock data)</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {localServiceProviders.length > 0 ? (
@@ -469,6 +543,9 @@ export default function DashboardPage() {
 
   // PROVIDER DASHBOARD
   if (role === 'provider') {
+    if (providerDataLoading) {
+      return <div className="flex justify-center items-center h-64"><Hourglass className="h-10 w-10 animate-spin text-primary" /> <p className="ml-3 text-muted-foreground">Loading your requests...</p></div>;
+    }
     return (
       <div className="space-y-8 p-4 md:p-6">
         <Card className="shadow-lg border-primary/30">
@@ -598,7 +675,7 @@ export default function DashboardPage() {
         <Separator className="my-8"/>
 
         <section>
-          <h2 className="text-xl font-semibold mb-4 text-foreground/90 flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Work & Offer History</h2>
+          <h2 className="text-xl font-semibold mb-4 text-foreground/90 flex items-center"><History className="mr-2 h-5 w-5 text-primary"/>Work & Offer History</h2>
           {providerWorkHistory.length > 0 ? (
             <div className="space-y-4">
               {providerWorkHistory.map((offer) => (
@@ -629,14 +706,13 @@ export default function DashboardPage() {
             </div>
           ) : (
             <Alert className="border-dashed">
-              <FileText className="h-4 w-4"/>
+              <History className="h-4 w-4"/>
               <AlertTitle>No Work History</AlertTitle>
               <AlertDescription>No completed or declined offers in your history yet.</AlertDescription>
             </Alert>
           )}
         </section>
         
-        {/* Dialog for Provider to Decline Offer */}
         <Dialog open={!!offerToDecline} onOpenChange={(isOpen) => { if (!isOpen) setOfferToDecline(null); }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -663,7 +739,6 @@ export default function DashboardPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Dialog for Provider Commission Payment */}
         <Dialog open={showCommissionPaymentDialog} onOpenChange={(isOpen) => { if(!isOpen) setOfferToAcceptOrDecline(null); setShowCommissionPaymentDialog(isOpen);}}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
@@ -698,6 +773,8 @@ export default function DashboardPage() {
 
   // SEEKER DASHBOARD
   if (role === 'seeker') {
+    // For seeker, continue with mock data or simple display for now
+    // until their real-time data fetching is implemented
     return (
        <div className="space-y-8 p-4 md:p-6">
         <Card className="shadow-lg border-primary/30">
@@ -707,11 +784,11 @@ export default function DashboardPage() {
               Seeker Dashboard
             </CardTitle>
             <CardDescription className="text-md text-muted-foreground">
-              Manage your offers and find service providers.
+              Manage your offers and find service providers. (Shows mock data for now)
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6">
-            <Button className="w-full md:w-auto mb-6" onClick={() => router.push('/providers')}>
+             <Button className="w-full md:w-auto mb-6" onClick={() => router.push('/providers')}>
                 <SendHorizonal className="mr-2 h-4 w-4" /> Send New Offer / Find Provider
             </Button>
           </CardContent>
@@ -815,7 +892,7 @@ export default function DashboardPage() {
     );
   }
 
-  // Default Fallback (e.g. if role is null or unexpected)
+  // Default Fallback
   return (
     <div className="space-y-8 p-4 md:p-6">
       <Card className="shadow-lg border-primary/30">
@@ -839,3 +916,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
