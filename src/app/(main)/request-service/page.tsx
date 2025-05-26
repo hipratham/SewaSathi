@@ -12,9 +12,9 @@ export default function RequestServicePage() {
     <div className="max-w-2xl mx-auto">
       <Card className="shadow-xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl text-primary">Request a Service</CardTitle>
+          <CardTitle className="text-3xl text-primary">Send an Offer</CardTitle>
           <CardDescription>
-            Fill out the form below to detail your needs. Your request will be sent to the provider or made available to suitable providers.
+            Fill out the form below to detail your offer. It will be sent to the provider.
           </CardDescription>
         </CardHeader>
         <CardContent>

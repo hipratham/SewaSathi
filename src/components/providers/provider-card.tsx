@@ -5,7 +5,7 @@ import type { ServiceProvider, ServiceProviderAvailability, ServiceProviderRates
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ServiceCategoryIcon from "@/components/icons/service-category-icon";
-import { Star, MapPin, Clock, Tag, Send } from "lucide-react"; // Added Send icon
+import { Star, MapPin, Clock, Tag, Send } from "lucide-react"; 
 
 interface ProviderCardProps {
   provider: ServiceProvider;
@@ -104,12 +104,12 @@ export default function ProviderCard({ provider }: ProviderCardProps) {
             Services: {provider.servicesOffered.join(", ")}
           </CardDescription>
         )}
-         {provider.servicesOffered.length === 0 && provider.category !== "other" && (
+         {(!provider.servicesOffered || provider.servicesOffered.length === 0) && provider.category !== "other" && (
             <CardDescription className="text-sm">
              Primary service: {provider.category.charAt(0).toUpperCase() + provider.category.slice(1).replace('-', ' ')}
             </CardDescription>
         )}
-         {provider.servicesOffered.length === 0 && provider.category === "other" && provider.otherCategoryDescription && (
+         {(!provider.servicesOffered || provider.servicesOffered.length === 0) && provider.category === "other" && provider.otherCategoryDescription && (
             <CardDescription className="text-sm">
              Offers: {provider.otherCategoryDescription.substring(0,50)}{provider.otherCategoryDescription.length > 50 ? '...' : ''}
             </CardDescription>
@@ -135,7 +135,7 @@ export default function ProviderCard({ provider }: ProviderCardProps) {
       <CardFooter className="p-4 border-t">
         <Button asChild className="w-full">
           <Link href={`/request-service?providerId=${provider.id}`}>
-            <Send className="mr-2 h-4 w-4" /> Request Service
+            <Send className="mr-2 h-4 w-4" /> Send Offer
           </Link>
         </Button>
       </CardFooter>

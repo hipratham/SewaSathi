@@ -18,26 +18,39 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, type ChangeEvent } from "react";
-import { Send, Loader2, Info, Phone, Mail, LocateFixed, CheckCircle } from "lucide-react";
+import { Send, Loader2, Info, Phone, Mail, LocateFixed, CheckCircle, Calendar as CalendarIcon, DollarSign } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
 import { useAuth } from "@/context/auth-context";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const serviceRequestSchema = z.object({
   userName: z.string().min(2, { message: "Name is required." }),
   userEmail: z.string().email({ message: "Please enter a valid email address." }),
   userPhone: z.string().min(10, { message: "Your phone number is required (at least 10 digits)." }),
   location: z.string().min(3, { message: "Location is required." }),
-  serviceNeeded: z.string().optional(), // Made optional
+  taskDetails: z.string().optional(),
+  budget: z.coerce.number().positive({ message: "Budget must be a positive number."}).optional().nullable(),
+  preferredDate: z.date().optional().nullable(),
 });
 
 interface ServiceRequestFormProps {
-  providerId?: string;
+  providerId?: string; 
+  // The dashboard will now pass this to a new function to add to its local state
+  onOfferSubmit?: (offerData: any) => void; 
 }
 
-export default function ServiceRequestForm({ providerId }: ServiceRequestFormProps) {
+export default function ServiceRequestForm({ providerId: propProviderId, onOfferSubmit }: ServiceRequestFormProps) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const providerId = propProviderId || searchParams.get("providerId") || undefined;
+
   const [isLoading, setIsLoading] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -49,7 +62,9 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
       userEmail: "",
       userPhone: "",
       location: "",
-      serviceNeeded: "",
+      taskDetails: "",
+      budget: undefined,
+      preferredDate: undefined,
     },
   });
 
@@ -57,7 +72,6 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
     if (user) {
       form.setValue("userName", user.displayName || user.email?.split('@')[0] || "");
       form.setValue("userEmail", user.email || "");
-      // Consider pre-filling phone if available and verified in user's main profile
     }
   }, [user, form]);
 
@@ -65,30 +79,63 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
 
   async function onSubmit(values: z.infer<typeof serviceRequestSchema>) {
     setIsLoading(true);
-    console.log("Service request submitted:", values, "for provider:", providerId);
+    if (!providerId) {
+        toast({ title: "Error", description: "Provider ID is missing. Cannot send offer.", variant: "destructive"});
+        setIsLoading(false);
+        return;
+    }
+    if (!user?.uid) {
+        toast({ title: "Authentication Error", description: "You must be logged in to send an offer.", variant: "destructive"});
+        setIsLoading(false);
+        // Optionally redirect to login: router.push('/auth/signin');
+        return;
+    }
+    
+    const newOffer = {
+      id: `offer-${Date.now()}`,
+      userId: user.uid,
+      clientName: values.userName,
+      clientEmail: values.userEmail,
+      clientPhone: values.userPhone,
+      clientAddress: values.location,
+      taskDetails: values.taskDetails || "No specific details provided.",
+      budget: values.budget || null,
+      preferredDate: values.preferredDate ? values.preferredDate.toISOString().split('T')[0] : null,
+      requestedAt: new Date().toISOString(),
+      providerId: providerId,
+      status: "offer_sent_to_provider",
+      // Other fields will be populated as the offer progresses
+    };
 
-    const requestTime = new Date().toLocaleString();
-    // In a real app, you'd send this data to your backend/Firebase
-    // For now, we simulate success
-    await mockApiCall();
+    console.log("New Offer Submitted:", newOffer);
 
-    // Example: Update mockServiceRequests or a global state if using for demo
-    // For now, just log and show success
-    console.log(
-      `Simulating notification for provider ${providerId || 'N/A'}: ` +
-      `New service request from ${values.userName} (Email: ${values.userEmail}, Phone: ${values.userPhone}). ` +
-      `Location: ${values.location}. Needs: ${values.serviceNeeded || 'Not specified'}. Time: ${requestTime}`
-    );
+    // If onOfferSubmit is provided (likely from dashboard modal), use it
+    if (onOfferSubmit) {
+        onOfferSubmit(newOffer);
+        toast({
+            title: "Offer Sent!",
+            description: "Your offer has been sent to the provider.",
+        });
+        setIsLoading(false);
+        setIsSubmitted(true); // To potentially close modal or show success state
+        form.reset();
+        return; 
+    }
+    
+    // Fallback for standalone page usage (simulates adding to a global list)
+    // In a real app, this would be an API call to save to Firebase.
+    await mockApiCall(); 
+    // For demo purposes, we'll assume it's added to a list that the dashboard page can access.
+    // This part would be more complex with actual data persistence.
 
     setIsLoading(false);
     setIsSubmitted(true);
     toast({
-      title: "Request Submitted Successfully!",
-      description: `Your service request ${values.serviceNeeded ? `for "${values.serviceNeeded.substring(0, 30)}..." ` : ''}has been sent. You will be contacted by a provider if your request is accepted.`,
+      title: "Offer Sent Successfully!",
+      description: `Your offer has been sent. You can track its status on your dashboard.`,
       variant: "default",
       duration: 7000,
     });
-    form.reset(); // Reset form after successful submission
   }
 
   const handleUseCurrentLocation = async () => {
@@ -172,33 +219,41 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
     }
   };
 
-  if (isSubmitted) {
+  if (isSubmitted && !onOfferSubmit) { // Only show this full page success if not used as a modal component
     return (
       <div className="text-center p-8 bg-card rounded-lg shadow-md space-y-4">
         <CheckCircle className="mx-auto h-16 w-16 text-green-500 mb-4" />
-        <h2 className="text-2xl font-semibold text-primary">Request Submitted!</h2>
-        <p className="text-muted-foreground">Thank you for your request. A service provider will contact you if they can fulfill your needs. You can view your request status on your dashboard (coming soon).</p>
-        <Button asChild>
-          <Link href={providerId ? `/providers/${providerId}` : "/providers"}>
-            {providerId ? "Back to Provider Profile" : "Find More Providers"}
-          </Link>
-        </Button>
-         <Button asChild variant="outline">
-            <Link href="/">Back to Home</Link>
-        </Button>
+        <h2 className="text-2xl font-semibold text-primary">Offer Sent!</h2>
+        <p className="text-muted-foreground">Thank you for your offer. You can track its progress on your dashboard.</p>
+        <div className="flex gap-4 justify-center">
+          <Button asChild>
+            <Link href={providerId ? `/providers/${providerId}` : "/providers"}>
+              {providerId ? "Back to Provider Profile" : "Find More Providers"}
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+              <Link href="/">Back to Home</Link>
+          </Button>
+           <Button asChild variant="secondary">
+              <Link href="/dashboard">Go to Dashboard</Link>
+          </Button>
+        </div>
       </div>
     );
   }
+  
+  // If submitted from a modal, the modal controller should close it.
+  // This form component just signals success via isSubmitted.
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-6 md:p-8 bg-card rounded-lg shadow-lg">
-        {providerId &&
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-1"> {/* Reduced padding for modal use */}
+        {providerId && !onOfferSubmit && // Show this only if on the standalone page
             <Alert variant="default" className="bg-primary/10 border-primary/30">
                 <Info className="h-4 w-4 text-primary" />
-                <AlertTitle className="text-primary">Specific Provider Selected</AlertTitle>
+                <AlertTitle className="text-primary">Sending Offer to Specific Provider</AlertTitle>
                 <AlertDescription>
-                You are requesting service from a specific provider. Your request will be sent directly to them.
+                Your offer will be sent directly to the selected provider.
                 </AlertDescription>
             </Alert>
         }
@@ -257,7 +312,7 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
                     <FormControl>
                         <Input placeholder="e.g. Maitidevi, Kathmandu (Verify if auto-filled)" {...field} />
                     </FormControl>
-                    <Button type="button" variant="outline" onClick={handleUseCurrentLocation} aria-label="Use current location" disabled={isLocating}>
+                    <Button type="button" variant="outline" size="icon" onClick={handleUseCurrentLocation} aria-label="Use current location" disabled={isLocating}>
                         {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
                     </Button>
                 </div>
@@ -266,32 +321,88 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
             </FormItem>
           )}
         />
-        <FormField
+         <FormField
           control={form.control}
-          name="serviceNeeded"
+          name="taskDetails"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Describe Your Needs (Remarks - Optional)</FormLabel>
+              <FormLabel>Task Details (Optional)</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder="e.g., My kitchen sink is leaking and needs urgent repair. OR I need a math tutor for Class 10, CBSE curriculum."
+                  placeholder="Describe the task or service you need..."
                   className="resize-none"
-                  rows={5}
+                  rows={4}
                   {...field}
                 />
               </FormControl>
-              <FormDescription>Provide as much detail as you can, or leave blank if not specific.</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="budget"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Your Budget (Optional, NPR)</FormLabel>
+               <FormControl>
+                 <div className="relative flex items-center">
+                    <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input type="number" placeholder="e.g., 1500" {...field} value={field.value ?? ""} onChange={e => field.onChange(parseFloat(e.target.value))} className="pl-10"/>
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="preferredDate"
+          render={({ field }) => (
+            <FormItem className="flex flex-col">
+              <FormLabel>Preferred Date (Optional)</FormLabel>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <FormControl>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full pl-3 text-left font-normal",
+                        !field.value && "text-muted-foreground"
+                      )}
+                    >
+                      {field.value ? (
+                        format(field.value, "PPP")
+                      ) : (
+                        <span>Pick a date</span>
+                      )}
+                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                    </Button>
+                  </FormControl>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={field.value || undefined}
+                    onSelect={(date) => field.onChange(date)}
+                    disabled={(date) =>
+                      date < new Date(new Date().setDate(new Date().getDate() - 1)) // Disable past dates
+                    }
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
               <FormMessage />
             </FormItem>
           )}
         />
 
+
         <Button type="submit" className="w-full text-lg py-3" disabled={isLoading}>
           {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Send className="mr-2 h-5 w-5" />}
-          Submit Request
+          Send Offer
         </Button>
       </form>
     </Form>
   );
 }
-

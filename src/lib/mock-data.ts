@@ -1,5 +1,6 @@
 
-import type { ServiceProvider, Review, ServiceProviderAvailability, ServiceProviderRates, ServiceRequest, ServiceCategory } from "./types";
+import type { ServiceProvider, Review, ServiceProviderAvailability, ServiceProviderRates, ServiceRequest, ServiceCategory, ServiceRequestStatus } from "./types";
+import { COMMISSION_RATE } from "./types";
 
 const generateReviews = (providerName: string): Review[] => [
   {
@@ -44,8 +45,8 @@ interface RawProviderData {
   address: string;
   location?: ServiceProvider['location'];
   ratesObject: ServiceProviderRates;
-  availabilityString: string; // Keep for parsing logic
-  availability?: ServiceProviderAvailability; // Make this optional, will be generated
+  availabilityString: string; 
+  availability?: ServiceProviderAvailability; 
   profileImage?: string;
 }
 
@@ -189,7 +190,7 @@ export const mockServiceProviders: ServiceProvider[] = mockProvidersRawData.map(
       rates: providerData.ratesObject,
       overallRating: calculateOverallRating(reviews),
       reviews,
-      availability: providerData.availability || parseAvailabilityString(providerData.availabilityString), // Use pre-parsed if available
+      availability: providerData.availability || parseAvailabilityString(providerData.availabilityString),
       profileImage: providerData.profileImage,
     };
   }
@@ -198,123 +199,160 @@ export const mockServiceProviders: ServiceProvider[] = mockProvidersRawData.map(
 
 export const mockServiceRequests: ServiceRequest[] = [
   {
-    id: "req-001",
-    userId: "client-uid-1",
+    id: "offer-001",
+    userId: "seeker-uid-1", // Seeker
     clientName: "Aasha Thapa",
     clientEmail: "aasha.thapa@example.com",
     clientPhone: "9812345670",
     clientAddress: "Lazimpat, Kathmandu",
-    clientServiceNeeded: "My kitchen sink is clogged and water is backing up. Need urgent help.",
+    taskDetails: "My kitchen sink is clogged and water is backing up. Need urgent help.",
+    budget: 1000,
+    preferredDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 2 days from now
     requestedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), 
-    providerId: "mock-provider-uid-1", 
+    providerId: "mock-provider-uid-1", // Ramesh Plumbing Services
     serviceCategory: "plumber",
-    status: "pending_provider_action",
+    status: "offer_sent_to_provider" as ServiceRequestStatus,
   },
   {
-    id: "req-002",
-    userId: "client-uid-2",
+    id: "offer-002",
+    userId: "seeker-uid-2",
     clientName: "Bikram Rai",
     clientEmail: "bikram.rai@example.com",
     clientPhone: "9809876543",
     clientAddress: "Sanepa, Lalitpur",
-    clientServiceNeeded: "Need to install new ceiling fans in two rooms and fix a faulty light switch.",
+    taskDetails: "Need to install new ceiling fans in two rooms and fix a faulty light switch.",
+    budget: 2500,
+    preferredDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     requestedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), 
-    providerId: "mock-provider-uid-2", 
+    providerId: "mock-provider-uid-2", // Sita's Electrical Works
     serviceCategory: "electrician",
-    status: "pending_provider_action",
+    status: "offer_accepted_by_provider_pending_payment" as ServiceRequestStatus,
+    commissionAmount: 2500 * COMMISSION_RATE,
   },
   {
-    id: "req-003",
-    userId: "client-uid-3",
+    id: "offer-003",
+    userId: "seeker-uid-3",
     clientName: "Sunita Gurung",
     clientEmail: "sunita.gurung@example.com",
     clientPhone: "9855555555",
     clientAddress: "Koteshwor, Kathmandu",
-    clientServiceNeeded: "Washing machine is not spinning. Makes a loud noise.",
+    taskDetails: "Washing machine is not spinning. Makes a loud noise.",
+    budget: 1200,
     requestedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), 
-    providerId: "mock-provider-uid-3", 
+    providerId: "mock-provider-uid-3", // Hari Appliance Repairs
     serviceCategory: "appliance-repair",
-    status: "accepted_by_provider", 
-    estimatedJobValueByProvider: 1200,
-    adminFeeCalculated: 96,
-    adminFeePaid: true,
+    status: "payment_submitted_pending_admin_approval" as ServiceRequestStatus,
+    commissionAmount: 1200 * COMMISSION_RATE,
+    paymentReference: "ESW-PAY-XYZ123",
   },
   {
-    id: "req-004",
-    userId: "client-uid-4",
+    id: "offer-004",
+    userId: "seeker-uid-4",
     clientName: "Rajesh Shrestha",
     clientEmail: "rajesh.shrestha@example.com",
     clientPhone: "9841122333",
     clientAddress: "Old Baneshwor, Kathmandu",
-    clientServiceNeeded: "Looking for a math tutor for my son in Class 8, CBSE board. Preferably 3 days a week.",
+    taskDetails: "Looking for a math tutor for my son in Class 8, CBSE board. Preferably 3 days a week.",
+    budget: 4500, // Monthly
     requestedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), 
-    providerId: "mock-provider-uid-4", 
+    providerId: "mock-provider-uid-4", // Gita Home Tutions
     serviceCategory: "tuition-teacher",
-    status: "job_completed", 
-    estimatedJobValueByProvider: 4500,
-    adminFeeCalculated: 360,
+    status: "admin_approved_contact_unlocked" as ServiceRequestStatus, 
+    commissionAmount: 4500 * COMMISSION_RATE,
     adminFeePaid: true,
   },
   {
-    id: "req-005",
-    userId: "client-uid-5",
-    clientName: "Deepa Lama",
-    clientEmail: "deepa.lama@example.com",
-    clientPhone: "9860000000",
-    clientAddress: "Maharajgunj, Kathmandu",
-    clientServiceNeeded: "Need a thorough cleaning for my 3BHK apartment before a party.",
+    id: "offer-005",
+    userId: "seeker-uid-1", // Aasha Thapa again
+    clientName: "Aasha Thapa",
+    clientEmail: "aasha.thapa@example.com",
+    clientPhone: "9812345670",
+    clientAddress: "Lazimpat, Kathmandu",
+    taskDetails: "Need urgent AC repair, not cooling.",
+    budget: 1800,
     requestedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), 
-    providerId: "mock-provider-uid-1", 
-    serviceCategory: "house-cleaning",
-    status: "pending_provider_action",
+    providerId: "mock-provider-uid-3", // Hari Appliance Repairs
+    serviceCategory: "appliance-repair",
+    status: "offer_declined_by_provider" as ServiceRequestStatus,
+    providerRejectionReason: "Currently overbooked with AC repairs for the next few days.",
   },
    {
-    id: "req-006",
-    userId: "client-uid-6",
+    id: "offer-006",
+    userId: "seeker-uid-6",
     clientName: "Nabin Karki",
     clientEmail: "nabin.karki@example.com",
     clientPhone: "9801234567",
     clientAddress: "Budhanilkantha, Kathmandu",
-    clientServiceNeeded: "The main circuit breaker keeps tripping. Need an electrician to diagnose and fix.",
+    taskDetails: "The main circuit breaker keeps tripping. Need an electrician to diagnose and fix.",
+    budget: 1500,
     requestedAt: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(), 
-    providerId: "mock-provider-uid-2", 
+    providerId: "mock-provider-uid-2", // Sita's Electrical Works
     serviceCategory: "electrician",
-    status: "pending_admin_fee", 
-    estimatedJobValueByProvider: 1500,
-    adminFeeCalculated: 120,
-    adminFeePaid: false,
+    status: "payment_submitted_pending_admin_approval" as ServiceRequestStatus, 
+    commissionAmount: 1500 * COMMISSION_RATE,
+    paymentReference: "ESW-PAY-ABC789"
   },
   {
-    id: "req-007",
-    userId: "client-uid-7",
+    id: "offer-007",
+    userId: "seeker-uid-7",
     clientName: "Anita Maharjan",
     clientEmail: "anita.maharjan@example.com",
     clientPhone: "9807654321",
     clientAddress: "Boudha, Kathmandu",
-    clientServiceNeeded: "My AC is not cooling properly. Might need a gas refill or servicing.",
+    taskDetails: "My AC is not cooling properly. Might need a gas refill or servicing.",
+    budget: 2000,
     requestedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), 
-    providerId: "mock-provider-uid-3", 
+    providerId: "mock-provider-uid-3", // Hari Appliance Repairs
     serviceCategory: "appliance-repair",
-    status: "awaiting_admin_confirmation", 
-    estimatedJobValueByProvider: 2000,
-    adminFeeCalculated: 160,
-    adminFeePaid: true, 
+    status: "admin_rejected_payment" as ServiceRequestStatus, 
+    commissionAmount: 2000 * COMMISSION_RATE,
+    paymentReference: "ESW-PAY-FAIL01",
+    adminRejectionReason: "Payment screenshot unclear or amount mismatch.",
   },
   {
-    id: "req-008",
-    userId: "client-uid-8",
+    id: "offer-008", // For provider-uid-1 (Ramesh Plumbing)
+    userId: "seeker-uid-8",
     clientName: "Prakash Yadav",
     clientEmail: "prakash.yadav@example.com",
     clientPhone: "9811112222",
     clientAddress: "Chabahil, Kathmandu",
-    clientServiceNeeded: "Need a professional painter for two interior rooms, approx 12x14 ft each.",
-    requestedAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-    providerId: "mock-provider-uid-6", 
-    serviceCategory: "painter",
-    status: "admin_fee_payment_rejected",
-    estimatedJobValueByProvider: 8000,
-    adminFeeCalculated: 640,
-    adminFeePaid: false,
-    adminRejectionReason: "Screenshot of payment was unclear. Please re-upload or contact support."
+    taskDetails: "Leaky faucet in the bathroom, needs repair or replacement.",
+    budget: 700,
+    preferredDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    requestedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    providerId: "mock-provider-uid-1", // Ramesh Plumbing Services
+    serviceCategory: "plumber",
+    status: "offer_sent_to_provider" as ServiceRequestStatus,
+  },
+  {
+    id: "offer-009", // Completed job for provider-uid-1
+    userId: "seeker-uid-9",
+    clientName: "Kiran Basnet",
+    clientEmail: "kiran.basnet@example.com",
+    clientPhone: "9800011122",
+    clientAddress: "Baluwatar, Kathmandu",
+    taskDetails: "Fixed a major pipe burst. Excellent and quick work!",
+    budget: 3000,
+    requestedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), // 10 days ago
+    providerId: "mock-provider-uid-1", // Ramesh Plumbing Services
+    serviceCategory: "plumber",
+    status: "job_completed" as ServiceRequestStatus,
+    commissionAmount: 3000 * COMMISSION_RATE,
+    adminFeePaid: true,
+  },
+  {
+    id: "offer-010", // Another offer for provider-uid-1 to accept or decline
+    userId: "seeker-uid-10",
+    clientName: "Sarita Joshi",
+    clientEmail: "sarita.joshi@example.com",
+    clientPhone: "9822233344",
+    clientAddress: "Pulchowk, Lalitpur",
+    taskDetails: "Need to install a new water heater.",
+    budget: 1800,
+    preferredDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    requestedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(), // 20 minutes ago
+    providerId: "mock-provider-uid-1", // Ramesh Plumbing Services
+    serviceCategory: "plumber",
+    status: "offer_sent_to_provider" as ServiceRequestStatus,
   },
 ];
