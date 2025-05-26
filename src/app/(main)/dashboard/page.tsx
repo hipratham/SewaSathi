@@ -2,7 +2,7 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/auth-context";
@@ -222,7 +222,8 @@ export default function DashboardPage() {
                           <CardContent className="text-sm space-y-2 px-4 py-3">
                             <p><strong className="font-medium">Client Need:</strong> {req.clientServiceNeeded.substring(0, 100)}...</p>
                             <p><strong className="font-medium">Provider Estimate:</strong> Rs. {req.estimatedJobValueByProvider?.toFixed(2)}</p>
-                            <p><strong className="font-medium">Admin Fee (8%):</strong> Rs. {req.adminFeeCalculated?.toFixed(2)}</p>
+                            <div><strong className="font-medium">Admin Fee (8%):</strong> Rs. {req.adminFeeCalculated?.toFixed(2)}</div>
+                            <div><strong className="font-medium">Status:</strong> <Badge variant="secondary" className="capitalize">{req.status.replace(/_/g, ' ')}</Badge></div>
                           </CardContent>
                           <CardFooter className="flex justify-end gap-2 px-4 py-3 border-t mt-2">
                             <Button variant="default" size="sm" onClick={() => handleAdminApprovePayment(req.id)}>
@@ -465,11 +466,9 @@ export default function DashboardPage() {
                   <CardFooter className="flex justify-end gap-2 border-t pt-3 mt-2">
                     {req.status === "pending_provider_action" && (
                       <>
-                        <DialogTrigger asChild>
-                          <Button variant="default" onClick={() => handleOpenAcceptDialog(req)}>
-                            <CheckCircle className="mr-2 h-4 w-4" /> Accept Offer
-                          </Button>
-                        </DialogTrigger>
+                        <Button variant="default" onClick={() => handleOpenAcceptDialog(req)}>
+                           <CheckCircle className="mr-2 h-4 w-4" /> Accept Offer
+                        </Button>
                         <Button variant="destructive" onClick={() => handleRejectOffer(req.id)}>
                            <XCircle className="mr-2 h-4 w-4" /> Reject Offer
                         </Button>
@@ -639,5 +638,6 @@ export default function DashboardPage() {
 // animation: {
 //   'spin_slow': 'spin 3s linear infinite',
 // }
+
 
 
