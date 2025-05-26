@@ -184,7 +184,7 @@ export default function DashboardPage() {
               Manage platform activities, service requests, and provider payments.
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-0 md:p-6">
+          <CardContent className="p-4 md:p-6">
             <Tabs defaultValue="pending-confirmations" className="w-full">
               <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 p-1 bg-muted rounded-lg mb-6">
                 <TabsTrigger value="pending-confirmations" className="text-sm py-2.5">
@@ -208,18 +208,18 @@ export default function DashboardPage() {
                     {pendingAdminConfirmations.length > 0 ? (
                       pendingAdminConfirmations.map((req) => (
                         <Card key={req.id} className="shadow-md border hover:shadow-lg transition-shadow">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-lg text-primary-foreground bg-primary/90 px-4 py-2 rounded-t-md flex justify-between items-center">
+                          <CardHeader className="pb-3 bg-muted/50 rounded-t-md">
+                            <CardTitle className="text-lg text-primary-foreground bg-primary/90 px-4 py-2 rounded-t-md flex justify-between items-center -mx-4 -mt-3 mb-3">
                               <span>Request ID: {req.id.substring(0, 8)}...</span>
                                <Badge variant="secondary" className="capitalize bg-background text-primary font-semibold">
                                 {req.status.replace(/_/g, ' ')}
                                </Badge>
                             </CardTitle>
-                            <CardDescription className="pt-3 px-4 text-sm">
+                            <CardDescription className="pt-1 text-sm">
                               Provider: {getProviderName(req.providerId, mockServiceProviders)}
                             </CardDescription>
                           </CardHeader>
-                          <CardContent className="text-sm space-y-2 px-4">
+                          <CardContent className="text-sm space-y-2 px-4 py-3">
                             <p><strong className="font-medium">Client Need:</strong> {req.clientServiceNeeded.substring(0, 100)}...</p>
                             <p><strong className="font-medium">Provider Estimate:</strong> Rs. {req.estimatedJobValueByProvider?.toFixed(2)}</p>
                             <p><strong className="font-medium">Admin Fee (8%):</strong> Rs. {req.adminFeeCalculated?.toFixed(2)}</p>
@@ -273,7 +273,7 @@ export default function DashboardPage() {
                               <CalendarDays className="inline h-3.5 w-3.5 mr-1"/> Requested: {new Date(req.requestedAt).toLocaleString()}
                             </CardDescription>
                           </CardHeader>
-                          <CardContent className="text-sm space-y-1.5">
+                          <CardContent className="text-sm space-y-1.5 px-4 py-3">
                             <p><strong className="font-medium">Service Needed:</strong> {req.clientServiceNeeded}</p>
                             <p><strong className="font-medium">Client Contact:</strong> {req.clientPhone} | <strong className="font-medium">Address:</strong> {req.clientAddress}</p>
                             <Separator className="my-2.5"/>
@@ -321,7 +321,7 @@ export default function DashboardPage() {
                               Category: {provider.category}{provider.category === 'other' && provider.otherCategoryDescription ? ` (${provider.otherCategoryDescription})` : ''} | ID: {provider.id.substring(0,15)}...
                             </CardDescription>
                           </CardHeader>
-                          <CardContent className="text-sm space-y-1.5">
+                          <CardContent className="text-sm space-y-1.5 px-4 py-3">
                             <p><strong className="font-medium">Contact:</strong> {provider.contactInfo.phone} / {provider.contactInfo.email}</p>
                             <p><strong className="font-medium">Address:</strong> {provider.address}</p>
                             {provider.servicesOffered && provider.servicesOffered.length > 0 && (
@@ -331,7 +331,7 @@ export default function DashboardPage() {
                             <div><strong className="font-medium">Rates:</strong> {formatRatesForAdmin(provider.rates)}</div>
                             <p><strong className="font-medium">Rating:</strong> {provider.overallRating.toFixed(1)} ({provider.reviews.length} reviews)</p>
                           </CardContent>
-                          <CardFooter className="border-t mt-2 py-3">
+                          <CardFooter className="border-t mt-2 py-3 px-4">
                             <Button variant="outline" size="sm" asChild>
                               <Link href={`/providers/${provider.id}`} className="flex items-center"> <Eye className="mr-2 h-4 w-4"/> View Full Public Profile</Link>
                             </Button>
@@ -385,17 +385,21 @@ export default function DashboardPage() {
 
   // PROVIDER DASHBOARD
   if (role === 'provider') {
+    // For mock data demo: Use a fixed provider ID for filtering to ensure some data is shown.
+    // In a real app, this would be user?.uid from useAuth().
+    const demoProviderIdForFiltering = "mock-provider-uid-1"; 
+
     const recentRequests = serviceRequests.filter(
-      req => req.providerId === user?.uid && 
+      req => req.providerId === demoProviderIdForFiltering && 
              (req.status === "pending_provider_action" || 
               req.status === "pending_admin_fee" || 
               req.status === "awaiting_admin_confirmation" || 
               req.status === "admin_fee_payment_rejected" ||
-              req.status === "accepted_by_provider") // Also show accepted so they can see contact details
+              req.status === "accepted_by_provider")
     ).slice(0, 5); 
 
     const workHistory = serviceRequests.filter(
-      req => req.providerId === user?.uid && (req.status === "job_completed" || req.status === "request_completed" ||  req.status === "rejected_by_provider")
+      req => req.providerId === demoProviderIdForFiltering && (req.status === "job_completed" || req.status === "request_completed" ||  req.status === "rejected_by_provider")
     ).slice(0, 5); 
 
     return (
@@ -635,4 +639,5 @@ export default function DashboardPage() {
 // animation: {
 //   'spin_slow': 'spin 3s linear infinite',
 // }
+
 
