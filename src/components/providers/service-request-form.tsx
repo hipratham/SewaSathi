@@ -28,7 +28,7 @@ const serviceRequestSchema = z.object({
   userEmail: z.string().email({ message: "Please enter a valid email address." }),
   userPhone: z.string().min(10, { message: "Your phone number is required (at least 10 digits)." }),
   location: z.string().min(3, { message: "Location is required." }),
-  serviceNeeded: z.string().min(10, { message: "Please describe your needs (min. 10 characters)." }),
+  serviceNeeded: z.string().optional(), // Made optional
 });
 
 interface ServiceRequestFormProps {
@@ -77,14 +77,14 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
     console.log(
       `Simulating notification for provider ${providerId || 'N/A'}: ` +
       `New service request from ${values.userName} (Email: ${values.userEmail}, Phone: ${values.userPhone}). ` +
-      `Location: ${values.location}. Needs: ${values.serviceNeeded}. Time: ${requestTime}`
+      `Location: ${values.location}. Needs: ${values.serviceNeeded || 'Not specified'}. Time: ${requestTime}`
     );
 
     setIsLoading(false);
     setIsSubmitted(true);
     toast({
       title: "Request Submitted Successfully!",
-      description: `Your service request for "${values.serviceNeeded.substring(0, 30)}..." has been sent. You will be contacted by a provider if your request is accepted.`,
+      description: `Your service request ${values.serviceNeeded ? `for "${values.serviceNeeded.substring(0, 30)}..." ` : ''}has been sent. You will be contacted by a provider if your request is accepted.`,
       variant: "default",
       duration: 7000,
     });
@@ -271,7 +271,7 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
           name="serviceNeeded"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Describe Your Needs (Remarks)</FormLabel>
+              <FormLabel>Describe Your Needs (Remarks - Optional)</FormLabel>
               <FormControl>
                 <Textarea
                   placeholder="e.g., My kitchen sink is leaking and needs urgent repair. OR I need a math tutor for Class 10, CBSE curriculum."
@@ -280,7 +280,7 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
                   {...field}
                 />
               </FormControl>
-              <FormDescription>Be as detailed as possible.</FormDescription>
+              <FormDescription>Provide as much detail as you can, or leave blank if not specific.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -294,3 +294,4 @@ export default function ServiceRequestForm({ providerId }: ServiceRequestFormPro
     </Form>
   );
 }
+
